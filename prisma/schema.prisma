@@ -1,0 +1,122 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role{
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+model User {
+  id        Int   @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  password  String
+  avatar    String?
+  role      Role
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tokens RefreshToken[]
+}
+
+model Class{
+  id Int
+  name String
+  description String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  //1 lop co nhieu bai dang
+  posts Post[]
+  users User[] @relation("ClassMembers")
+
+}
+
+model Post {
+  id Int @id @default(autoincrement())
+  title String
+  content String
+  type PostType
+  dueDate DateTime? 
+  createAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  authorId Int
+  author      User         @relation(fields: [authorId], references: [id])
+  
+  classId     Int
+  class       Class        @relation(fields: [classId], references: [id])
+
+  attachments Attachment[]
+  comments    Comment[]
+  submissions Submission[]
+}
+
+model Comment {
+  id Int @id @default(autoincrement())
+  content String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  postId Int
+  post      Post     @relation(fields: [postId], references: [id])
+
+  authorId Int
+  author    User     @relation(fields: [authorId], references: [id])
+
+  attachments Attachment[]
+}
+
+model Attachment {
+  id        Int      @id @default(autoincrement())
+  name      String
+  url       String
+  mimeType  String
+  size      Int?
+  
+  postId    Int?
+  post      Post?    @relation(fields: [postId], references: [id])
+  
+  commentId Int?
+  comment   Comment? @relation(fields: [commentId], references: [id])
+
+  submissionId Int?
+  submission   Submission? @relation(fields: [submissionId], references: [id])
+}
+
+model Submission {
+  id          Int              @id @default(autoincrement())
+  submittedAt DateTime?
+  grade       Float?
+  feedback    String?
+  status      SubmissionStatus @default(PENDING)
+
+  postId      Int
+  post        Post             @relation(fields: [postId], references: [id])
+
+  studentId   Int
+  student     User             @relation(fields: [studentId], references: [id])
+
+  attachments Attachment[]
+}
+
+model RefreshToken {
+  id        Int  @id @default(autoincrement())
+  token     String   @unique
+  userId    Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
