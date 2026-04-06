@@ -64,6 +64,35 @@ export const findPostsByClass = async (classId, page = 1, limit = 10) => {
   };
 };
 
+export const findAssignmentsByClass = async (classId, page = 1, limit = 10) => {
+  const [data, total] = await Promise.all([
+    prisma.post.findMany({
+      where: {
+        classId,
+        type: "ASSIGNMENT",
+      },
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { createdAt: "desc" },
+      include: {
+        author: true,
+        attachments: true,
+      },
+    }),
+    prisma.post.count({
+      where: {
+        classId,
+        type: "ASSIGNMENT",
+      },
+    }),
+  ]);
+
+  return {
+    data,
+    pagination: { page, limit, total },
+  };
+};
+
 export const findCommentsByPost = async (postId, page = 1, limit = 10) => {
   const [data, total] = await Promise.all([
     prisma.comment.findMany({

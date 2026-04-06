@@ -1,4 +1,4 @@
-import { parse } from "dotenv";
+
 
 export const createClassDto = (data) => {
   if (!data.name) throw new Error("Name is required");
@@ -10,13 +10,17 @@ export const createClassDto = (data) => {
 
 export const createPostDto = (data) => {
   const { title, content, type, classId, dueDate } = data;
-  if (!title || !content || !type || !classId)
-    throw new Error("Title, content, type and classId are required");
+
+  if (!title?.trim()) throw new Error("Title is required");
+  if (!content?.trim()) throw new Error("Content is required");
+  if (!VALID_TYPES.includes(type)) throw new Error("Invalid post type");
+  if (!classId) throw new Error("ClassId is required");
+
   return {
-    title,
-    content,
+    title: title.trim(),
+    content: content.trim(),
     type,
-    classId: parseInt(classId),
+    classId: Number(classId),
     dueDate: dueDate ? new Date(dueDate) : null,
   };
 };

@@ -18,6 +18,11 @@ enum Role{
   STUDENT
 }
 
+enum PostType{
+  ANNOUNCEMENT,
+  ASSIGNMENT
+}
+
 model User {
   id        Int   @id @default(autoincrement())
   name      String
