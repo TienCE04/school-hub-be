@@ -1,0 +1,58 @@
+import prisma from "../../config/prisma.js";
+
+export const getConversationsByUser = (userId) => {
+  return prisma.conversation.findMany({
+    where: {
+      participants: { some: { userId } },
+    },
+    include: {
+      participants: {
+        select: { userId: true, lastReadAt: true },
+      },
+      messages: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        include: {
+          sender: {
+            select: { id: true, name: true, avatar: true },
+          },
+          attachments: true,
+        },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+};
+
+export const createMessage = (
+  senderId,
+  conversationId,
+  content,
+  attachments,
+) => {
+  return prisma.message.create({
+    data: {
+      senderId,
+      conversationId,
+      content,
+      attachments: { create: attachments },
+    },
+    include: { sender: true, attachments: true },
+  });
+};
+
+export const findPrivateConversation = (privateKey) => {
+  return prisma.conversation.findUnique({
+    where: { privateKey },
+  });
+};
+
+export const countUnread = (conversationId, userId, lastReadAt) => {
+  return prisma.message.count({
+    where: {
+      conversationId,
+      createdAt: { gt: lastReadAt },
+      senderId: { not: userId }
+    }
+  });
+};

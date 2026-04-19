@@ -56,7 +56,7 @@ model Post {
   content String
   type PostType
   dueDate DateTime? 
-  createAt DateTime @default(now())
+  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   authorId Int
@@ -129,11 +129,15 @@ model Conversation{
   name String?    //Group
   avatar String? //Group
   type ConversationType @default(PRIVATE)
-  createdAt DateTine @default(now())
+
+  privateKey String? @unique
+
+  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   message Message[]
   participants Participant[]
+  @@index([updatedAt])
 }
 
 model Participant {
@@ -145,13 +149,14 @@ model Participant {
   user User @relation(fields:[userId], references: [id])
   conversation Conversation @relation(fields:[conversationId],references:[id])
 
- @@unique([userId,conversationId]) 
+  @@unique([userId,conversationId]) 
+  @@index([conversationId])
 }
 
 model Message {
   id Int @id @default(autoincrement())
   content String @db.Text
-  createAt DateTime @default(now())
+  createdAt DateTime @default(now())
 
   senderId Int
   sender User @relation(fields:[senderId],references:[id])
@@ -159,6 +164,8 @@ model Message {
   conversationId Int
   conversation Conversation @relation(fields:[conversationId],references:[id])
 
+  @@index([conversationId,createdAt])
+  @@index([senderId])
   attachments Attachment[]
 }
 
