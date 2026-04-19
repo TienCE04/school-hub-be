@@ -35,6 +35,7 @@ model User {
   tokens RefreshToken[]
 }
 
+//module class, assignment,
 model Class{
   id Int
   name String
@@ -112,6 +113,50 @@ model Submission {
 
   studentId   Int
   student     User             @relation(fields: [studentId], references: [id])
+
+  attachments Attachment[]
+}
+
+//module message
+enum ConversationType{
+  PRIVATE,
+  GROUP
+}
+
+model Conversation{
+  id Int @id @default(autoincrement())
+  name String?    //Group
+  avatar String? //Group
+  type ConversationType @default(PRIVATE)
+  createdAt DateTine @default(now())
+  updatedAt DateTime @updatedAt
+
+  message Message[]
+  participants Participant[]
+}
+
+model Participant {
+  id Int @id @default(autoincrement())
+  userId Int
+  conversationId Int
+  lastReadAt DateTime @default(now()) //tính unreadCount
+
+  user User @relation(fields:[userId], references: [id])
+  conversation Conversation @relation(fields:[conversationId],references:[id])
+
+ @@unique([userId,conversationId]) 
+}
+
+model Message {
+  id Int @id @default(autoincrement())
+  content String @db.Text
+  createAt DateTime @default(now())
+
+  senderId Int
+  sender User @relation(fields:[senderId],references:[id])
+
+  conversationId Int
+  conversation Conversation @relation(fields:[conversationId],references:[id])
 
   attachments Attachment[]
 }
