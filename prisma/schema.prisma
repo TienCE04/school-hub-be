@@ -37,11 +37,12 @@ model User {
 
 //module class, assignment,
 model Class{
-  id Int
+  id Int @id @default(autoincrement())
   name String
   description String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  code String @unique
 
   //1 lop co nhieu bai dang
   posts Post[]

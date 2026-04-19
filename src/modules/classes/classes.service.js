@@ -64,3 +64,30 @@ export const getAssignments = async (classId, page, limit) => {
 
   return repo.findAssignmentsByClass(classId, page, limit);
 };
+
+export const createClass = async (data) => {
+  const code = await generateUniqueClassCode();
+
+  const newClass = await repo.createClass({
+    ...data,
+    code,
+  });
+  return newClass;
+};
+
+const generateUniqueClassCode = async () => {
+  let code;
+  let exists = true;
+
+  while (exists) {
+    code = Math.floor(100000 + Math.random() * 900000).toString();
+
+    const found = await prisma.class.findUnique({
+      where: { code },
+    });
+
+    if (!found) exists = false;
+  }
+
+  return code;
+};
