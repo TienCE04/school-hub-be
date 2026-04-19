@@ -35,6 +35,12 @@ enum ConversationType {
   GROUP
 }
 
+enum SessionType{
+  MORNING
+  AFTERNOON
+  EVENING
+}
+
 model User {
   id        Int   @id @default(autoincrement())
   name      String
@@ -188,6 +194,39 @@ model Message {
 
   @@index([conversationId, createdAt])
   @@index([senderId])
+}
+
+model Semester{
+  id  Int @id @default(autoincrement())
+  semesterName String 
+  startDate  DateTime
+  endDate DateTime
+  totalWeeks Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subjects Subject[]
+}
+
+model Subject{
+  id Int @id @default(autoincrement())
+  title String
+  subjectCode String
+  classCode String
+  location String
+  startTime DateTime
+  endTime DateTime
+  startDate DateTime
+  
+  classId        Int?      
+  class          Class?    @relation(fields: [classId], references: [id])
+
+  semesterId     Int
+  semester       Semester  @relation(fields: [semesterId], references: [id])
+
+  weekRanges     Json      
+  
+  session        SessionType
 }
 
 model RefreshToken {
