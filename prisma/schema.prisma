@@ -4,7 +4,7 @@
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../generated/prisma"
 }
 
@@ -12,15 +12,27 @@ datasource db {
   provider = "postgresql"
 }
 
-enum Role{
+enum Role {
   ADMIN
   TEACHER
   STUDENT
 }
 
-enum PostType{
-  ANNOUNCEMENT,
+enum PostType {
+  ANNOUNCEMENT
   ASSIGNMENT
+}
+
+enum SubmissionStatus {
+  PENDING
+  SUBMITTED
+  LATE
+  GRADED
+}
+
+enum ConversationType {
+  PRIVATE
+  GROUP
 }
 
 model User {
@@ -32,22 +44,30 @@ model User {
   role      Role
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
   tokens RefreshToken[]
+
+  classes Class[] @relation("ClassMembers")
+
+  posts       Post[]       @relation("UserPosts")
+  comments    Comment[]    @relation("UserComments")
+  submissions Submission[] @relation("UserSubmissions")
+
+  participants Participant[]
+  messages     Message[] @relation("UserMessages")
 }
 
-//module class, assignment,
-model Class{
+model Class {
   id Int @id @default(autoincrement())
   name String
   description String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
   code String @unique
 
-  //1 lop co nhieu bai dang
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   posts Post[]
   users User[] @relation("ClassMembers")
-
 }
 
 model Post {
@@ -55,15 +75,16 @@ model Post {
   title String
   content String
   type PostType
-  dueDate DateTime? 
+  dueDate DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   authorId Int
-  author      User         @relation(fields: [authorId], references: [id])
-  
-  classId     Int
-  class       Class        @relation(fields: [classId], references: [id])
+  author User @relation("UserPosts", fields: [authorId], references: [id])
+
+  classId Int
+  class Class @relation(fields: [classId], references: [id])
 
   attachments Attachment[]
   comments    Comment[]
@@ -73,61 +94,59 @@ model Post {
 model Comment {
   id Int @id @default(autoincrement())
   content String
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   postId Int
-  post      Post     @relation(fields: [postId], references: [id])
+  post Post @relation(fields: [postId], references: [id])
 
   authorId Int
-  author    User     @relation(fields: [authorId], references: [id])
+  author User @relation("UserComments", fields: [authorId], references: [id])
 
   attachments Attachment[]
 }
 
-model Attachment {
-  id        Int      @id @default(autoincrement())
-  name      String
-  url       String
-  mimeType  String
-  size      Int?
-  
-  postId    Int?
-  post      Post?    @relation(fields: [postId], references: [id])
-  
-  commentId Int?
-  comment   Comment? @relation(fields: [commentId], references: [id])
-
-  submissionId Int?
-  submission   Submission? @relation(fields: [submissionId], references: [id])
-}
-
 model Submission {
-  id          Int              @id @default(autoincrement())
+  id          Int @id @default(autoincrement())
   submittedAt DateTime?
   grade       Float?
   feedback    String?
   status      SubmissionStatus @default(PENDING)
 
-  postId      Int
-  post        Post             @relation(fields: [postId], references: [id])
+  postId Int
+  post Post @relation(fields: [postId], references: [id])
 
-  studentId   Int
-  student     User             @relation(fields: [studentId], references: [id])
+  studentId Int
+  student User @relation("UserSubmissions", fields: [studentId], references: [id])
 
   attachments Attachment[]
 }
 
-//module message
-enum ConversationType{
-  PRIVATE,
-  GROUP
+model Attachment {
+  id        Int @id @default(autoincrement())
+  name      String
+  url       String
+  mimeType  String
+  size      Int?
+
+  postId Int?
+  post   Post? @relation(fields: [postId], references: [id])
+
+  commentId Int?
+  comment   Comment? @relation(fields: [commentId], references: [id])
+
+  submissionId Int?
+  submission   Submission? @relation(fields: [submissionId], references: [id])
+
+  messageId Int?
+  message   Message? @relation(fields: [messageId], references: [id])
 }
 
-model Conversation{
+model Conversation {
   id Int @id @default(autoincrement())
-  name String?    //Group
-  avatar String? //Group
+  name String?
+  avatar String?
   type ConversationType @default(PRIVATE)
 
   privateKey String? @unique
@@ -135,8 +154,9 @@ model Conversation{
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  message Message[]
+  messages Message[]
   participants Participant[]
+
   @@index([updatedAt])
 }
 
@@ -144,12 +164,12 @@ model Participant {
   id Int @id @default(autoincrement())
   userId Int
   conversationId Int
-  lastReadAt DateTime @default(now()) //tính unreadCount
+  lastReadAt DateTime @default(now())
 
-  user User @relation(fields:[userId], references: [id])
-  conversation Conversation @relation(fields:[conversationId],references:[id])
+  user User @relation(fields: [userId], references: [id])
+  conversation Conversation @relation(fields: [conversationId], references: [id])
 
-  @@unique([userId,conversationId]) 
+  @@unique([userId, conversationId])
   @@index([conversationId])
 }
 
@@ -159,19 +179,20 @@ model Message {
   createdAt DateTime @default(now())
 
   senderId Int
-  sender User @relation(fields:[senderId],references:[id])
+  sender User @relation("UserMessages", fields: [senderId], references: [id])
 
   conversationId Int
-  conversation Conversation @relation(fields:[conversationId],references:[id])
+  conversation Conversation @relation(fields: [conversationId], references: [id])
 
-  @@index([conversationId,createdAt])
-  @@index([senderId])
   attachments Attachment[]
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
 }
 
 model RefreshToken {
-  id        Int  @id @default(autoincrement())
-  token     String   @unique
+  id        Int @id @default(autoincrement())
+  token     String @unique
   userId    Int
   expiresAt DateTime
   createdAt DateTime @default(now())
