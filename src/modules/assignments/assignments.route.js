@@ -38,7 +38,7 @@ router.get("/:id", authenticate, controller.getAssignmentDetail);
 router.post(
   "/:id/submit",
   authenticate,
-  authorize("STUDENT"),
+  authorize(["STUDENT"]),
   controller.submitAssignment,
 );
 
@@ -50,7 +50,7 @@ router.post(
 router.post(
   "/submissions/:id/grade",
   authenticate,
-  authorize("TEACHER", "ADMIN"),
+  authorize(["TEACHER", "ADMIN"]),
   controller.gradeSubmission,
 );
 
@@ -62,7 +62,7 @@ router.post(
 router.get(
   "/my-submissions",
   authenticate,
-  authorize("STUDENT"),
+  authorize(["STUDENT"]),
   controller.getMySubmissions,
 );
 

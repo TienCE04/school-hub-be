@@ -5,7 +5,6 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/prisma"
 }
 
 datasource db {
@@ -35,14 +34,14 @@ enum ConversationType {
   GROUP
 }
 
-enum SessionType{
+enum SessionType {
   MORNING
   AFTERNOON
   EVENING
 }
 
 model User {
-  id        Int   @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   name      String
   email     String   @unique
   password  String
@@ -60,37 +59,38 @@ model User {
   submissions Submission[] @relation("UserSubmissions")
 
   participants Participant[]
-  messages     Message[] @relation("UserMessages")
+  messages     Message[]     @relation("UserMessages")
 }
 
 model Class {
-  id Int @id @default(autoincrement())
-  name String
+  id          Int     @id @default(autoincrement())
+  name        String
   description String?
-  code String @unique
+  code        String  @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  posts Post[]
-  users User[] @relation("ClassMembers")
+  posts    Post[]
+  users    User[]    @relation("ClassMembers")
+  subjects Subject[]
 }
 
 model Post {
-  id Int @id @default(autoincrement())
-  title String
+  id      Int       @id @default(autoincrement())
+  title   String
   content String
-  type PostType
+  type    PostType
   dueDate DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   authorId Int
-  author User @relation("UserPosts", fields: [authorId], references: [id])
+  author   User @relation("UserPosts", fields: [authorId], references: [id])
 
   classId Int
-  class Class @relation(fields: [classId], references: [id])
+  class   Class @relation(fields: [classId], references: [id])
 
   attachments Attachment[]
   comments    Comment[]
@@ -98,43 +98,43 @@ model Post {
 }
 
 model Comment {
-  id Int @id @default(autoincrement())
+  id      Int    @id @default(autoincrement())
   content String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   postId Int
-  post Post @relation(fields: [postId], references: [id])
+  post   Post @relation(fields: [postId], references: [id])
 
   authorId Int
-  author User @relation("UserComments", fields: [authorId], references: [id])
+  author   User @relation("UserComments", fields: [authorId], references: [id])
 
   attachments Attachment[]
 }
 
 model Submission {
-  id          Int @id @default(autoincrement())
+  id          Int              @id @default(autoincrement())
   submittedAt DateTime?
   grade       Float?
   feedback    String?
   status      SubmissionStatus @default(PENDING)
 
   postId Int
-  post Post @relation(fields: [postId], references: [id])
+  post   Post @relation(fields: [postId], references: [id])
 
   studentId Int
-  student User @relation("UserSubmissions", fields: [studentId], references: [id])
+  student   User @relation("UserSubmissions", fields: [studentId], references: [id])
 
   attachments Attachment[]
 }
 
 model Attachment {
-  id        Int @id @default(autoincrement())
-  name      String
-  url       String
-  mimeType  String
-  size      Int?
+  id       Int    @id @default(autoincrement())
+  name     String
+  url      String
+  mimeType String
+  size     Int?
 
   postId Int?
   post   Post? @relation(fields: [postId], references: [id])
@@ -150,29 +150,29 @@ model Attachment {
 }
 
 model Conversation {
-  id Int @id @default(autoincrement())
-  name String?
+  id     Int              @id @default(autoincrement())
+  name   String?
   avatar String?
-  type ConversationType @default(PRIVATE)
+  type   ConversationType @default(PRIVATE)
 
   privateKey String? @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  messages Message[]
+  messages     Message[]
   participants Participant[]
 
   @@index([updatedAt])
 }
 
 model Participant {
-  id Int @id @default(autoincrement())
-  userId Int
+  id             Int      @id @default(autoincrement())
+  userId         Int
   conversationId Int
-  lastReadAt DateTime @default(now())
+  lastReadAt     DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
   conversation Conversation @relation(fields: [conversationId], references: [id])
 
   @@unique([userId, conversationId])
@@ -180,15 +180,15 @@ model Participant {
 }
 
 model Message {
-  id Int @id @default(autoincrement())
-  content String @db.Text
+  id        Int      @id @default(autoincrement())
+  content   String   @db.Text
   createdAt DateTime @default(now())
 
   senderId Int
-  sender User @relation("UserMessages", fields: [senderId], references: [id])
+  sender   User @relation("UserMessages", fields: [senderId], references: [id])
 
   conversationId Int
-  conversation Conversation @relation(fields: [conversationId], references: [id])
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
 
   attachments Attachment[]
 
@@ -196,42 +196,42 @@ model Message {
   @@index([senderId])
 }
 
-model Semester{
-  id  Int @id @default(autoincrement())
-  semesterName String 
-  startDate  DateTime
-  endDate DateTime
-  totalWeeks Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Semester {
+  id           Int      @id @default(autoincrement())
+  semesterName String
+  startDate    DateTime
+  endDate      DateTime
+  totalWeeks   Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   subjects Subject[]
 }
 
-model Subject{
-  id Int @id @default(autoincrement())
-  title String
+model Subject {
+  id          Int      @id @default(autoincrement())
+  title       String
   subjectCode String
-  classCode String
-  location String
-  startTime DateTime
-  endTime DateTime
-  startDate DateTime
-  
-  classId        Int?      
-  class          Class?    @relation(fields: [classId], references: [id])
+  classCode   String
+  location    String
+  startTime   DateTime
+  endTime     DateTime
+  startDate   DateTime
 
-  semesterId     Int
-  semester       Semester  @relation(fields: [semesterId], references: [id])
+  classId Int?
+  class   Class? @relation(fields: [classId], references: [id])
 
-  weekRanges     Json      
-  
-  session        SessionType
+  semesterId Int
+  semester   Semester @relation(fields: [semesterId], references: [id])
+
+  weekRanges Json
+
+  session SessionType
 }
 
 model RefreshToken {
-  id        Int @id @default(autoincrement())
-  token     String @unique
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
   userId    Int
   expiresAt DateTime
   createdAt DateTime @default(now())

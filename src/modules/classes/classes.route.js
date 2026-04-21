@@ -14,3 +14,5 @@ router.get(
   authenticate,
   controller.getAssignments
 );
+
+export default router;

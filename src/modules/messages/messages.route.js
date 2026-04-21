@@ -7,3 +7,5 @@ const router = express.Router();
 
 router.get('/conversations', authenticate, controller.getConversations);
 router.post('/messages', authenticate, authorize(['TEACHER','STUDENT']), controller.postMessage);
+
+export default router;
