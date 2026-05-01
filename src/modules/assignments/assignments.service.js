@@ -1,5 +1,7 @@
 import * as repo from "./assignments.repository.js";
 import prisma from "../../config/prisma.js";
+import { getIO } from "../../realtime/gateway/index.js";
+import { SOCKET_EVENTS } from "../../realtime/events/index.js";
 
 /**
  * CREATE ASSIGNMENT
@@ -23,7 +25,16 @@ export const createAssignment = async (authorId, data) => {
     throw new Error("Permission denied");
   }
 
-  return repo.createAssignment(authorId, data);
+  const assignment = await repo.createAssignment(authorId, data);
+
+  try {
+    const io = getIO();
+    io.to(`class:${data.classId}`).emit(SOCKET_EVENTS.ASSIGNMENT_CREATED, assignment);
+  } catch (err) {
+    console.error("Socket error on createAssignment:", err);
+  }
+
+  return assignment;
 };
 
 /**
@@ -163,10 +174,24 @@ export const submitAssignment = async (userId, postId, attachments) => {
   const now = new Date();
   const status = now > assignment.dueDate ? "LATE" : "SUBMITTED";
 
-  return repo.upsertSubmission(userId, postId, {
+  const submission = await repo.upsertSubmission(userId, postId, {
     attachments,
     status,
   });
+
+  try {
+    const io = getIO();
+    // Notify the author (teacher) of the assignment
+    io.to(`user:${assignment.authorId}`).emit(SOCKET_EVENTS.NOTIFICATION_RECEIVED, {
+      type: "SUBMISSION",
+      message: `User ${userId} has submitted assignment ${postId}`,
+      submission
+    });
+  } catch (err) {
+    console.error("Socket error on submitAssignment:", err);
+  }
+
+  return submission;
 };
 
 /**
@@ -199,13 +224,28 @@ export const gradeSubmission = async (teacherId, submissionId, data) => {
     throw new Error("Permission denied");
   }
 
-  return prisma.submission.update({
+  const updatedSubmission = await prisma.submission.update({
     where: { id: submissionId },
     data: {
       grade: data.grade,
       feedback: data.feedback,
     },
   });
+
+  try {
+    const io = getIO();
+    // Notify the student about the grade
+    io.to(`user:${submission.studentId}`).emit(SOCKET_EVENTS.NOTIFICATION_RECEIVED, {
+      type: "GRADE",
+      message: `Your submission for assignment ${submission.postId} has been graded`,
+      grade: data.grade,
+      submissionId
+    });
+  } catch (err) {
+    console.error("Socket error on gradeSubmission:", err);
+  }
+
+  return updatedSubmission;
 };
 
 /**

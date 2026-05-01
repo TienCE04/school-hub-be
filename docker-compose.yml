@@ -1,5 +1,9 @@
 version: '3.8'
 
+volumes:
+  pgdata:
+  redisdata:
+
 services:
   postgres:
     image: postgres:16
@@ -14,5 +18,11 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
-volumes:
-  pgdata:
+  redis:
+    image: redis:7-alpine
+    container_name: redis_db
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
