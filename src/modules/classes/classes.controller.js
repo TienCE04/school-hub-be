@@ -53,3 +53,13 @@ export const getAssignments = async (req, res) => {
     res.status(400).json({ message: e.message });
   }
 };
+
+export const getClassMembers = async (req, res) => {
+  try {
+    const classId = parseInt(req.params.id);
+    const result = await service.getClassMembers(classId);
+    res.json(result);
+  } catch (e) {
+    res.status(404).json({ message: e.message });
+  }
+};

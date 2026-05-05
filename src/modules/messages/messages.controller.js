@@ -1,5 +1,6 @@
 import * as service from "./messages.service.js";
 import { getUserConversations, sendMessage } from "./messages.service.js";
+import { sendMessageDto } from "./dto/messages.dto.js";
 
 export const getConversations = async (req, res) => {
   try {

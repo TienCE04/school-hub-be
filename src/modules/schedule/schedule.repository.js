@@ -7,7 +7,7 @@ export const findSemesterWithSubjects = (semesterId) => {
     include: {
       subjects: {
         orderBy: {
-          startDateTime: "asc"
+          startDate: "asc"
         }
       }
     }
@@ -48,8 +48,9 @@ export const addSubjectToSemester = (semesterId, data) => {
       subjectCode: data.subjectCode,
       classCode: data.classCode,
       location: data.location,
-      startDateTime: data.startDateTime,
-      endDateTime: data.endDateTime,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      startDate: data.startDate,
       weekRanges: data.weekRanges,
       session: data.session,
       classId: data.classId,

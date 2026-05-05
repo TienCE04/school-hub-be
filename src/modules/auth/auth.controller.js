@@ -8,6 +8,7 @@ import * as repo from "./auth.repository.js";
 
 export const login = async (req, res) => {
   try {
+    console.log(req.body);
     const data = loginDto(req.body);
     const result = await service.login(data);
     res.json(result);

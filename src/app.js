@@ -7,6 +7,7 @@ import scheduleRoute from "./modules/schedule/schedule.route.js";
 import messageRoute from "./modules/messages/messages.route.js";
 import driveRoute from "./modules/drive/drive.route.js";
 import profileRoute from "./modules/profile/profile.route.js";
+import userRoute from "./modules/users/users.route.js";
 
 const app = express();
 
@@ -32,5 +33,8 @@ app.use("/api/messages", messageRoute);
 
 // Drive Storage
 app.use("/api/drive", driveRoute);
+
+// Users
+app.use("/api/users", userRoute);
 
 export default app;

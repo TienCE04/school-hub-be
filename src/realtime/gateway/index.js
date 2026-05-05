@@ -49,12 +49,12 @@ export const initSocket = (server) => {
       try {
         const userWithClasses = await prisma.user.findUnique({
           where: { id: socket.user.id },
-          include: { classes: true }
+          include: { classMembers: { include: { class: true } } }
         });
 
-        if (userWithClasses?.classes) {
-          userWithClasses.classes.forEach(c => {
-            socket.join(`class:${c.id}`);
+        if (userWithClasses?.classMembers) {
+          userWithClasses.classMembers.forEach(cm => {
+            socket.join(`class:${cm.class.id}`);
           });
         }
       } catch (err) {

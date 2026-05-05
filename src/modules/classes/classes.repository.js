@@ -119,3 +119,23 @@ export const findCommentsByPost = async (postId, page = 1, limit = 10) => {
     },
   };
 };
+
+export const findClassMembers = (classId) => {
+  return prisma.classMember.findMany({
+    where: { classId },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatar: true,
+          role: true,
+        },
+      },
+    },
+    orderBy: {
+      joinedAt: "asc",
+    },
+  });
+};

@@ -20,22 +20,29 @@ export const createSubjectDto = (data) => {
     title,
     subjectCode,
     classCode,
-    startDateTime,
-    endDateTime,
+    location,
+    session,
+    startTime,
+    endTime,
+    startDate,
     weekRanges,
-    ...rest
+    teacherId,
+    studentIds,
+    classId
   } = data;
 
   if (!title || !subjectCode || !classCode) {
     throw new Error("Missing required subject fields");
   }
 
-  // validate date
-  if (!startDateTime || !endDateTime) {
-    throw new Error("Missing datetime");
+  if (!startTime || !endTime || !startDate) {
+    throw new Error("Missing datetime fields (startTime, endTime, startDate)");
   }
 
-  // validate weekRanges
+  if (!location || !session) {
+    throw new Error("Missing location or session");
+  }
+
   if (!Array.isArray(weekRanges)) {
     throw new Error("weekRanges must be an array");
   }
@@ -45,14 +52,9 @@ export const createSubjectDto = (data) => {
       const [startWeek, endWeek] = r;
       return { startWeek, endWeek };
     }
-
     if (typeof r === "object" && r !== null) {
-      return {
-        startWeek: r.startWeek,
-        endWeek: r.endWeek
-      };
+      return { startWeek: r.startWeek, endWeek: r.endWeek };
     }
-
     throw new Error("Invalid weekRange format");
   });
 
@@ -60,8 +62,14 @@ export const createSubjectDto = (data) => {
     title,
     subjectCode,
     classCode,
-    startDateTime: new Date(startDateTime),
-    endDateTime: new Date(endDateTime),
-    weekRanges: normalizedWeekRanges
+    location,
+    session,
+    startTime: new Date(startTime),
+    endTime: new Date(endTime),
+    startDate: new Date(startDate),
+    weekRanges: normalizedWeekRanges,
+    teacherId: teacherId ? Number(teacherId) : undefined,
+    studentIds: Array.isArray(studentIds) ? studentIds.map(Number) : [],
+    classId: classId ? Number(classId) : undefined
   };
 };

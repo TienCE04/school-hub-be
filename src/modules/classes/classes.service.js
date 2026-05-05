@@ -102,3 +102,19 @@ const generateUniqueClassCode = async () => {
 
   return code;
 };
+
+export const getClassMembers = async (classId) => {
+  const classExists = await repo.findClassById(classId);
+  if (!classExists) throw new Error("Class not found");
+
+  const members = await repo.findClassMembers(classId);
+
+  return members.map((m) => ({
+    id: m.user.id,
+    name: m.user.name,
+    email: m.user.email,
+    avatar: m.user.avatar,
+    role: m.user.role,
+    joinedAt: m.joinedAt,
+  }));
+};

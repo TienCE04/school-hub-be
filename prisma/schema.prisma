@@ -44,6 +44,7 @@ model User {
   id        Int      @id @default(autoincrement())
   name      String
   email     String   @unique
+  studentCode String? @unique
   password  String
   avatar    String?
   role      Role
@@ -52,7 +53,7 @@ model User {
 
   tokens RefreshToken[]
 
-  classes Class[] @relation("ClassMembers")
+  classMembers ClassMember[]
 
   posts       Post[]       @relation("UserPosts")
   comments    Comment[]    @relation("UserComments")
@@ -75,9 +76,21 @@ model Class {
   updatedAt DateTime @updatedAt
 
   posts    Post[]
-  users    User[]    @relation("ClassMembers")
+  members  ClassMember[]
   subjects Subject[]
   driveFiles DriveFile[]
+}
+
+model ClassMember {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  classId   Int
+  joinedAt  DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, classId])
 }
 
 model Post {
