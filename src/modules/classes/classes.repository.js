@@ -157,3 +157,27 @@ export const findClassesByUserId = (userId) => {
     }
   });
 };
+
+export const findClassByCode = (code) => {
+  return prisma.class.findUnique({
+    where: { code },
+  });
+};
+
+export const checkClassMembership = async (userId, classId) => {
+  const member = await prisma.classMember.findUnique({
+    where: {
+      userId_classId: { userId, classId },
+    },
+  });
+  return !!member;
+};
+
+export const addClassMember = (userId, classId) => {
+  return prisma.classMember.create({
+    data: {
+      userId,
+      classId,
+    },
+  });
+};

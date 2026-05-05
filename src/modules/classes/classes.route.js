@@ -6,9 +6,10 @@ import express from 'express';
 const router = express.Router();
 
 router.get('/', authenticate, controller.getMyClasses);
+router.post('/join', authenticate, controller.joinClass);
 router.get('/:id', authenticate, controller.getClassById);
 router.get('/:id/members', authenticate, controller.getClassMembers);
-router.post('/', authenticate, authorize(['TEACHER']), controller.createNewClass);
+router.post('/', authenticate, authorize(['TEACHER', 'ADMIN']), controller.createNewClass);
 router.post('/posts', authenticate, authorize(['TEACHER','STUDENT']), controller.createNewPost);
 router.get('/:classId/posts/:postId/stats', authenticate, authorize(['TEACHER']), controller.getAssignmentStats);
 router.get(
