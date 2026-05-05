@@ -18,7 +18,7 @@ export const getAssignmentWithSubmissions = (postId) => {
   return prisma.post.findUnique({
     where: { id: postId },
     include: {
-      class: { include: { users: { where: { role: "STUDENT" } } } },
+      class: { include: { members: { where: { user: { role: "STUDENT" } }, include: { user: true } } } },
       submissions: {
         include: { student: true, attachments: true },
       },

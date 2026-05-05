@@ -1,5 +1,7 @@
 import * as repo from "./assignments.repository.js";
 import prisma from "../../config/prisma.js";
+import { getIO } from "../../realtime/gateway/index.js";
+import { SOCKET_EVENTS } from "../../realtime/events/index.js";
 
 /**
  * CREATE ASSIGNMENT
@@ -10,20 +12,30 @@ export const createAssignment = async (authorId, data) => {
   const classData = await prisma.class.findUnique({
     where: { id: data.classId },
     include: {
-      users: {
-        where: { id: authorId },
+      members: {
+        where: { userId: authorId },
+        include: { user: true }
       },
     },
   });
 
   if (!classData) throw new Error("Class not found");
 
-  const userInClass = classData.users[0];
+  const userInClass = classData.members[0]?.user;
   if (!userInClass || !["TEACHER", "ADMIN"].includes(userInClass.role)) {
     throw new Error("Permission denied");
   }
 
-  return repo.createAssignment(authorId, data);
+  const assignment = await repo.createAssignment(authorId, data);
+
+  try {
+    const io = getIO();
+    io.to(`class:${data.classId}`).emit(SOCKET_EVENTS.ASSIGNMENT_CREATED, assignment);
+  } catch (err) {
+    console.error("Socket error on createAssignment:", err);
+  }
+
+  return assignment;
 };
 
 /**
@@ -36,7 +48,7 @@ export const getAssignmentDetail = async (userId, postId) => {
 
   if (!assignment) throw new Error("Assignment not found");
 
-  const allStudents = assignment.class?.users || [];
+  const allStudents = assignment.class?.members?.map((m) => m.user) || [];
   const submissions = assignment.submissions || [];
 
   // ===== STATS =====
@@ -140,7 +152,7 @@ export const submitAssignment = async (userId, postId, attachments) => {
     include: {
       class: {
         include: {
-          users: true,
+          members: { include: { user: true } },
         },
       },
     },
@@ -149,7 +161,7 @@ export const submitAssignment = async (userId, postId, attachments) => {
   if (!assignment) throw new Error("Assignment not found");
 
   // Check user thuộc class
-  const userInClass = assignment.class.users.find((u) => u.id === userId);
+  const userInClass = assignment.class.members.find((m) => m.userId === userId)?.user;
 
   if (!userInClass) {
     throw new Error("User not in this class");
@@ -163,10 +175,24 @@ export const submitAssignment = async (userId, postId, attachments) => {
   const now = new Date();
   const status = now > assignment.dueDate ? "LATE" : "SUBMITTED";
 
-  return repo.upsertSubmission(userId, postId, {
+  const submission = await repo.upsertSubmission(userId, postId, {
     attachments,
     status,
   });
+
+  try {
+    const io = getIO();
+    // Notify the author (teacher) of the assignment
+    io.to(`user:${assignment.authorId}`).emit(SOCKET_EVENTS.NOTIFICATION_RECEIVED, {
+      type: "SUBMISSION",
+      message: `User ${userId} has submitted assignment ${postId}`,
+      submission
+    });
+  } catch (err) {
+    console.error("Socket error on submitAssignment:", err);
+  }
+
+  return submission;
 };
 
 /**
@@ -181,7 +207,7 @@ export const gradeSubmission = async (teacherId, submissionId, data) => {
         include: {
           class: {
             include: {
-              users: true,
+              members: { include: { user: true } },
             },
           },
         },
@@ -191,7 +217,7 @@ export const gradeSubmission = async (teacherId, submissionId, data) => {
 
   if (!submission) throw new Error("Submission not found");
 
-  const classUsers = submission.post.class.users;
+  const classUsers = submission.post.class.members.map((m) => m.user);
 
   const teacher = classUsers.find((u) => u.id === teacherId);
 
@@ -199,13 +225,28 @@ export const gradeSubmission = async (teacherId, submissionId, data) => {
     throw new Error("Permission denied");
   }
 
-  return prisma.submission.update({
+  const updatedSubmission = await prisma.submission.update({
     where: { id: submissionId },
     data: {
       grade: data.grade,
       feedback: data.feedback,
     },
   });
+
+  try {
+    const io = getIO();
+    // Notify the student about the grade
+    io.to(`user:${submission.studentId}`).emit(SOCKET_EVENTS.NOTIFICATION_RECEIVED, {
+      type: "GRADE",
+      message: `Your submission for assignment ${submission.postId} has been graded`,
+      grade: data.grade,
+      submissionId
+    });
+  } catch (err) {
+    console.error("Socket error on gradeSubmission:", err);
+  }
+
+  return updatedSubmission;
 };
 
 /**

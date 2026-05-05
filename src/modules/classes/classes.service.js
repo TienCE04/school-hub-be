@@ -1,5 +1,7 @@
 import * as repo from "./classes.repository.js";
 import prisma from "../../config/prisma.js";
+import { getIO } from "../../realtime/gateway/index.js";
+import { SOCKET_EVENTS } from "../../realtime/events/index.js";
 
 export const getClassDetails = async (classId) => {
   const classData = await repo.findClassWithPosts(classId);
@@ -34,7 +36,16 @@ export const createPost = async (data, user) => {
   if (data.type === "ASSIGNMENT" && user.role !== "TEACHER") {
     throw new Error("Only teacher can create assignment");
   }
-  return repo.createPost(user.id, data);
+  const post = await repo.createPost(user.id, data);
+
+  try {
+    const io = getIO();
+    io.to(`class:${data.classId}`).emit(SOCKET_EVENTS.POST_CREATED, post);
+  } catch (err) {
+    console.error("Socket error on createPost:", err);
+  }
+
+  return post;
 };
 
 export const getAssignmentStats = async (postId, classId) => {
@@ -90,4 +101,20 @@ const generateUniqueClassCode = async () => {
   }
 
   return code;
+};
+
+export const getClassMembers = async (classId) => {
+  const classExists = await repo.findClassById(classId);
+  if (!classExists) throw new Error("Class not found");
+
+  const members = await repo.findClassMembers(classId);
+
+  return members.map((m) => ({
+    id: m.user.id,
+    name: m.user.name,
+    email: m.user.email,
+    avatar: m.user.avatar,
+    role: m.user.role,
+    joinedAt: m.joinedAt,
+  }));
 };

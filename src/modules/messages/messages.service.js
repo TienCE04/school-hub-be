@@ -1,5 +1,7 @@
 import * as repo from "./messages.repository.js";
 import prisma from "../../config/prisma.js";
+import { getIO } from "../../realtime/gateway/index.js";
+import { SOCKET_EVENTS } from "../../realtime/events/index.js";
 
 export const getUserConversations = async (userId) => {
   const list = await repo.getConversationsByUser(userId);
@@ -26,11 +28,11 @@ export const getUserConversations = async (userId) => {
         type: conv.type,
         lastMessage: lastMsg
           ? {
-              id: lastMsg.id,
-              content: lastMsg.content,
-              createdAt: lastMsg.createdAt.getTime(),
-              sender: lastMsg.sender,
-            }
+            id: lastMsg.id,
+            content: lastMsg.content,
+            createdAt: lastMsg.createdAt.getTime(),
+            sender: lastMsg.sender,
+          }
           : null,
         lastTime: lastMsg
           ? lastMsg.createdAt.getTime()
@@ -99,6 +101,20 @@ export const sendMessage = async (senderId, data) => {
 
     return msg;
   });
+
+  // Fetch all participants to emit socket event
+  const allParticipants = await prisma.participant.findMany({
+    where: { conversationId: convId }
+  });
+
+  try {
+    const io = getIO();
+    allParticipants.forEach(p => {
+      io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, message);
+    });
+  } catch (err) {
+    console.error("Socket error on sendMessage:", err);
+  }
 
   return message;
 };

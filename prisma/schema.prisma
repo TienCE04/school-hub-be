@@ -44,6 +44,7 @@ model User {
   id        Int      @id @default(autoincrement())
   name      String
   email     String   @unique
+  studentCode String? @unique
   password  String
   avatar    String?
   role      Role
@@ -52,7 +53,7 @@ model User {
 
   tokens RefreshToken[]
 
-  classes Class[] @relation("ClassMembers")
+  classMembers ClassMember[]
 
   posts       Post[]       @relation("UserPosts")
   comments    Comment[]    @relation("UserComments")
@@ -60,6 +61,9 @@ model User {
 
   participants Participant[]
   messages     Message[]     @relation("UserMessages")
+  driveFiles   DriveFile[]
+
+  profile      Profile?
 }
 
 model Class {
@@ -72,8 +76,21 @@ model Class {
   updatedAt DateTime @updatedAt
 
   posts    Post[]
-  users    User[]    @relation("ClassMembers")
+  members  ClassMember[]
   subjects Subject[]
+  driveFiles DriveFile[]
+}
+
+model ClassMember {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  classId   Int
+  joinedAt  DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, classId])
 }
 
 model Post {
@@ -237,4 +254,38 @@ model RefreshToken {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id])
+}
+
+model DriveFile {
+  id          Int      @id @default(autoincrement())
+  name        String
+  url         String
+  mimeType    String
+  size        Float    // File size in bytes (using Float to support > 2GB without BigInt serialization issues)
+  isShared    Boolean  @default(false)
+  
+  ownerId     Int
+  owner       User     @relation(fields: [ownerId], references: [id])
+
+  classId     Int?
+  class       Class?   @relation(fields: [classId], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Profile {
+  id            Int      @id @default(autoincrement())
+  phone         String?
+  birthDate     String?
+  story         String?  @db.Text
+  emailPersonal String?
+  nameSchool    String?
+  nameClass     String?
+  major         String?
+  department    String?
+  title         String?
+
+  userId        Int      @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
