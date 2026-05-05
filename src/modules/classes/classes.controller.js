@@ -73,3 +73,17 @@ export const getMyClasses = async (req, res) => {
     res.status(400).json({ message: e.message });
   }
 };
+
+export const joinClass = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { code } = req.body;
+    if (!code) {
+      return res.status(400).json({ message: "Class code is required" });
+    }
+    const result = await service.joinClassByCode(userId, code);
+    res.status(200).json(result);
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};

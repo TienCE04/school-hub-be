@@ -130,3 +130,28 @@ const generateUniqueClassCode = async () => {
   }
   return code;
 };
+
+export const getMySchedule = async (userId, semesterId) => {
+  const subjects = await repo.findUserSubjects(userId, semesterId);
+
+  return subjects.map((s) => ({
+    id: s.id,
+    title: s.title,
+    subjectCode: s.subjectCode,
+    classCode: s.classCode,
+    location: s.location,
+    startTime: toISO(s.startTime),
+    endTime: toISO(s.endTime),
+    startDate: toISO(s.startDate),
+    weekRanges: s.weekRanges,
+    session: s.session,
+    classId: s.classId,
+    className: s.class ? s.class.name : null,
+    semester: {
+      id: s.semester.id,
+      semesterName: s.semester.semesterName,
+      startDate: toISO(s.semester.startDate),
+      endDate: toISO(s.semester.endDate),
+    }
+  }));
+};

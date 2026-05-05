@@ -1,5 +1,5 @@
 import * as service from "../schedule/schedule.service.js";
-import { createSemesterDto,createSubjectDto } from "../schedule/dto/semester.dto.js";
+import { createSemesterDto, createSubjectDto } from "../schedule/dto/semester.dto.js";
 
 export const getSemesterDetails = async (req, res) => {
   try {
@@ -70,6 +70,25 @@ export const addSubjectToSemester = async (req, res) => {
     res.status(201).json({
       success: true,
       message: "Subject added successfully",
+      data: result
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      message: err.message
+    });
+  }
+};
+
+export const getMySchedule = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const semesterId = req.query.semesterId ? Number(req.query.semesterId) : undefined;
+
+    const result = await service.getMySchedule(userId, semesterId);
+
+    res.status(200).json({
+      success: true,
       data: result
     });
   } catch (err) {

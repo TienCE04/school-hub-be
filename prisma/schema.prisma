@@ -54,6 +54,7 @@ model User {
   tokens RefreshToken[]
 
   classMembers ClassMember[]
+  subjectMembers SubjectMember[]
 
   posts       Post[]       @relation("UserPosts")
   comments    Comment[]    @relation("UserComments")
@@ -244,6 +245,20 @@ model Subject {
   weekRanges Json
 
   session SessionType
+
+  members SubjectMember[]
+}
+
+model SubjectMember {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  subjectId Int
+  joinedAt  DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, subjectId])
 }
 
 model RefreshToken {

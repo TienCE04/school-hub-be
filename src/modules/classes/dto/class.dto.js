@@ -5,6 +5,7 @@ export const createClassDto = (data) => {
   return {
     name: data.name,
     description: data.description || "",
+    code: data.code || undefined,
   };
 };
 

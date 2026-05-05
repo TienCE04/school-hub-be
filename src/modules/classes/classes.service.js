@@ -77,10 +77,20 @@ export const getAssignments = async (classId, page, limit) => {
 };
 
 export const createClass = async (data) => {
-  const code = await generateUniqueClassCode();
+  let code = data.code;
+  if (!code) {
+    code = await generateUniqueClassCode();
+  } else {
+    const exists = await prisma.class.findUnique({ where: { code } });
+    if (exists) {
+      throw new Error("Class code already exists");
+    }
+  }
+
+  const { code: _code, ...restData } = data; // Remove code from data to avoid conflict if any
 
   const newClass = await repo.createClass({
-    ...data,
+    ...restData,
     code,
   });
   return newClass;
@@ -129,4 +139,23 @@ export const getMyClasses = async (userId) => {
       joinedAt: m.joinedAt,
     };
   });
+};
+
+export const joinClassByCode = async (userId, code) => {
+  const classToJoin = await repo.findClassByCode(code);
+  if (!classToJoin) {
+    throw new Error("Class not found with the provided code");
+  }
+
+  const isMember = await repo.checkClassMembership(userId, classToJoin.id);
+  if (isMember) {
+    throw new Error("You are already a member of this class");
+  }
+
+  await repo.addClassMember(userId, classToJoin.id);
+
+  return {
+    message: "Successfully joined the class",
+    classId: classToJoin.id,
+  };
 };

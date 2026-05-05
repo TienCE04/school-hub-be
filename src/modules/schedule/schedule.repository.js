@@ -42,6 +42,12 @@ export const createSemester = (data) => {
 
 // CREATE subject in semester
 export const addSubjectToSemester = (semesterId, data) => {
+  const membersData = [];
+  if (data.teacherId) membersData.push({ userId: data.teacherId });
+  if (data.studentIds && data.studentIds.length > 0) {
+    data.studentIds.forEach(id => membersData.push({ userId: id }));
+  }
+
   return prisma.subject.create({
     data: {
       title: data.title,
@@ -54,7 +60,38 @@ export const addSubjectToSemester = (semesterId, data) => {
       weekRanges: data.weekRanges,
       session: data.session,
       classId: data.classId,
-      semesterId
+      semesterId,
+      members: membersData.length > 0 ? {
+        create: membersData
+      } : undefined
+    }
+  });
+};
+
+// GET user's schedule (subjects)
+export const findUserSubjects = (userId, semesterId) => {
+  const whereClause = {
+    members: {
+      some: {
+        userId
+      }
+    }
+  };
+  
+  if (semesterId) {
+    whereClause.semesterId = semesterId;
+  }
+
+  return prisma.subject.findMany({
+    where: whereClause,
+    include: {
+      semester: true,
+      class: {
+        select: { id: true, name: true, code: true }
+      }
+    },
+    orderBy: {
+      startDate: "asc"
     }
   });
 };
