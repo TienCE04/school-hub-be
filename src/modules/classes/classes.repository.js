@@ -139,3 +139,21 @@ export const findClassMembers = (classId) => {
     },
   });
 };
+
+export const findClassesByUserId = (userId) => {
+  return prisma.classMember.findMany({
+    where: { userId },
+    include: {
+      class: {
+        include: {
+          members: {
+            select: { id: true }
+          }
+        }
+      }
+    },
+    orderBy: {
+      joinedAt: "desc"
+    }
+  });
+};
