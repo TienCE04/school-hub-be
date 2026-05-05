@@ -118,3 +118,15 @@ export const getClassMembers = async (classId) => {
     joinedAt: m.joinedAt,
   }));
 };
+
+export const getMyClasses = async (userId) => {
+  const memberships = await repo.findClassesByUserId(userId);
+  return memberships.map((m) => {
+    const { members, ...classData } = m.class;
+    return {
+      ...classData,
+      membersCount: members ? members.length : 0,
+      joinedAt: m.joinedAt,
+    };
+  });
+};

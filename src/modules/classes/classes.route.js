@@ -5,6 +5,7 @@ import express from 'express';
 
 const router = express.Router();
 
+router.get('/', authenticate, controller.getMyClasses);
 router.get('/:id', authenticate, controller.getClassById);
 router.get('/:id/members', authenticate, controller.getClassMembers);
 router.post('/', authenticate, authorize(['TEACHER']), controller.createNewClass);

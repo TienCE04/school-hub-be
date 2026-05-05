@@ -63,3 +63,13 @@ export const getClassMembers = async (req, res) => {
     res.status(404).json({ message: e.message });
   }
 };
+
+export const getMyClasses = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const result = await service.getMyClasses(userId);
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
