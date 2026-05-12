@@ -3,17 +3,17 @@ import { createSemesterDto, createSubjectDto } from "../schedule/dto/semester.dt
 
 export const getSemesterDetails = async (req, res) => {
   try {
-    const { semesterId } = req.params;
 
-    const result = await service.getSemesterDetails(Number(semesterId));
+    const userId = req.user.id;
+    const semesterId = req.query.semesterId ? Number(req.query.semesterId) : undefined;
 
-    res.status(200).json({
-      success: true,
-      data: result
-    });
+    const result = await service.getSemesterDetails(userId, semesterId);
+
+    res.status(200).json(
+      result
+    );
   } catch (err) {
     res.status(400).json({
-      success: false,
       message: err.message
     });
   }
@@ -23,13 +23,11 @@ export const getAllSemesters = async (req, res) => {
   try {
     const result = await service.getAllSemesters();
 
-    res.status(200).json({
-      success: true,
-      data: result
-    });
+    res.status(200).json(
+      result
+    );
   } catch (err) {
     res.status(500).json({
-      success: false,
       message: err.message
     });
   }
@@ -42,14 +40,11 @@ export const createSemester = async (req, res) => {
 
     const result = await service.createSemester(dto);
 
-    res.status(201).json({
-      success: true,
-      message: "Semester created successfully",
-      data: result
-    });
+    res.status(201).json(
+      result
+    );
   } catch (err) {
     res.status(400).json({
-      success: false,
       message: err.message
     });
   }
@@ -67,33 +62,9 @@ export const addSubjectToSemester = async (req, res) => {
       dto
     );
 
-    res.status(201).json({
-      success: true,
-      message: "Subject added successfully",
-      data: result
-    });
+    res.status(201).json(result);
   } catch (err) {
     res.status(400).json({
-      success: false,
-      message: err.message
-    });
-  }
-};
-
-export const getMySchedule = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const semesterId = req.query.semesterId ? Number(req.query.semesterId) : undefined;
-
-    const result = await service.getMySchedule(userId, semesterId);
-
-    res.status(200).json({
-      success: true,
-      data: result
-    });
-  } catch (err) {
-    res.status(400).json({
-      success: false,
       message: err.message
     });
   }

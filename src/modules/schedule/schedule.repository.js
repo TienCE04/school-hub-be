@@ -1,19 +1,5 @@
 import prisma from "../../config/prisma.js";
 
-// GET 1 semester + subjects
-export const findSemesterWithSubjects = (semesterId) => {
-  return prisma.semester.findUnique({
-    where: { id: semesterId },
-    include: {
-      subjects: {
-        orderBy: {
-          startDate: "asc"
-        }
-      }
-    }
-  });
-};
-
 // GET all semesters 
 export const getAllSemesters = () => {
   return prisma.semester.findMany({
@@ -70,28 +56,16 @@ export const addSubjectToSemester = (semesterId, data) => {
 
 // GET user's schedule (subjects)
 export const findUserSubjects = (userId, semesterId) => {
-  const whereClause = {
-    members: {
-      some: {
-        userId
-      }
-    }
-  };
-  
-  if (semesterId) {
-    whereClause.semesterId = semesterId;
-  }
-
-  return prisma.subject.findMany({
-    where: whereClause,
+  return prisma.semester.findUnique({
+    where: { id: semesterId },
     include: {
-      semester: true,
-      class: {
-        select: { id: true, name: true, code: true }
+      subjects: {
+        where: {
+          members: {
+            some: { userId }
+          }
+        }
       }
-    },
-    orderBy: {
-      startDate: "asc"
     }
   });
 };

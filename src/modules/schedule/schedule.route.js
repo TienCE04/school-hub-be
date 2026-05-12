@@ -5,14 +5,6 @@ import { authorize } from "../../shared/middleware/role.middleware.js";
 
 const router = express.Router();
 
-
-// GET my schedule
-router.get(
-  "/my",
-  authenticate,
-  controller.getMySchedule
-);
-
 // GET all semesters
 router.get(
   "/",
@@ -22,7 +14,7 @@ router.get(
 
 // GET semester detail + subjects
 router.get(
-  "/:semesterId",
+  "/my",
   authenticate,
   controller.getSemesterDetails
 );
