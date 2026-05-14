@@ -9,7 +9,8 @@ export const getAllSemesters = () => {
       semesterName: true,
       startDate: true,
       endDate: true,
-      totalWeeks: true
+      totalWeeks: true,
+      weekRanges: true
     }
   });
 };
@@ -21,7 +22,8 @@ export const createSemester = (data) => {
       semesterName: data.semesterName,
       startDate: data.startDate,
       endDate: data.endDate,
-      totalWeeks: data.totalWeeks
+      totalWeeks: data.totalWeeks,
+      weekRanges: data.weekRanges
     }
   });
 };
@@ -43,7 +45,6 @@ export const addSubjectToSemester = (semesterId, data) => {
       startTime: data.startTime,
       endTime: data.endTime,
       startDate: data.startDate,
-      weekRanges: data.weekRanges,
       session: data.session,
       classId: data.classId,
       semesterId,

@@ -17,6 +17,7 @@ export const getSemesterDetails = async (userId, semesterId) => {
     semesterStartDate: toISO(semester.startDate),
     semesterEndDate: toISO(semester.endDate),
     totalWeeks: semester.totalWeeks,
+    weekRanges: semester.weekRanges,
     subjects: semester.subjects.map((s) => ({
       id: s.id,
       title: s.title,
@@ -26,7 +27,6 @@ export const getSemesterDetails = async (userId, semesterId) => {
       startTime: toISO(s.startTime),
       endTime: toISO(s.endTime),
       startDate: toISO(s.startDate),
-      weekRanges: s.weekRanges,
       session: s.session,
       classId: s.classId
     }))
@@ -42,7 +42,8 @@ export const getAllSemesters = async () => {
     semesterName: s.semesterName,
     startDate: toISO(s.startDate),
     endDate: toISO(s.endDate),
-    totalWeeks: s.totalWeeks
+    totalWeeks: s.totalWeeks,
+    weekRanges: s.weekRanges
   }));
 };
 

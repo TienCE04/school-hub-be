@@ -20,12 +20,20 @@ export const createClass = (data) => {
 };
 
 export const createPost = (authorId, data) => {
-  const { classId, ...postData } = data;
+  const { classId, attachments, ...postData } = data;
   return prisma.post.create({
     data: {
       ...postData,
       authorId,
       classId,
+      attachments: attachments && attachments.length > 0 ? {
+        create: attachments.map(att => ({
+          name: typeof att === 'string' ? att.split('/').pop() : att.name || "Attachment",
+          url: typeof att === 'string' ? att : att.url,
+          mimeType: typeof att === 'string' ? "application/octet-stream" : att.mimeType || "application/octet-stream",
+          size: typeof att === 'string' ? 0 : att.size || 0,
+        }))
+      } : undefined
     },
     include: { author: true, attachments: true },
   });

@@ -184,8 +184,10 @@ export const submitAssignment = async (userId, postId, attachments) => {
     const io = getIO();
     // Notify the author (teacher) of the assignment
     io.to(`user:${assignment.authorId}`).emit(SOCKET_EVENTS.NOTIFICATION_RECEIVED, {
+      id: Date.now().toString(),
+      title: "New Submission",
+      content: `User ${userId} has submitted assignment ${postId}`,
       type: "SUBMISSION",
-      message: `User ${userId} has submitted assignment ${postId}`,
       submission
     });
   } catch (err) {
@@ -237,8 +239,10 @@ export const gradeSubmission = async (teacherId, submissionId, data) => {
     const io = getIO();
     // Notify the student about the grade
     io.to(`user:${submission.studentId}`).emit(SOCKET_EVENTS.NOTIFICATION_RECEIVED, {
+      id: Date.now().toString(),
+      title: "Assignment Graded",
+      content: `Your submission for assignment ${submission.postId} has been graded`,
       type: "GRADE",
-      message: `Your submission for assignment ${submission.postId} has been graded`,
       grade: data.grade,
       submissionId
     });

@@ -1,46 +1,11 @@
 
 export const createSemesterDto = (data) => {
-  const { semesterName, startDate, endDate, totalWeeks } = data;
+  const { semesterName, startDate, endDate, totalWeeks, weekRanges } = data;
   if (!semesterName || !startDate || !endDate) {
     throw new Error("Missing required semester info");
   }
   if (isNaN(totalWeeks)) {
     throw new Error("totalWeeks must be a number");
-  }
-  return {
-    semesterName,   
-    startDate: new Date(startDate),
-    endDate: new Date(endDate),
-    totalWeeks: Number(totalWeeks),
-  };
-};
-
-export const createSubjectDto = (data) => {
-  const {
-    title,
-    subjectCode,
-    classCode,
-    location,
-    session,
-    startTime,
-    endTime,
-    startDate,
-    weekRanges,
-    teacherId,
-    studentIds,
-    classId
-  } = data;
-
-  if (!title || !subjectCode || !classCode) {
-    throw new Error("Missing required subject fields");
-  }
-
-  if (!startTime || !endTime || !startDate) {
-    throw new Error("Missing datetime fields (startTime, endTime, startDate)");
-  }
-
-  if (!location || !session) {
-    throw new Error("Missing location or session");
   }
 
   if (!Array.isArray(weekRanges)) {
@@ -59,6 +24,42 @@ export const createSubjectDto = (data) => {
   });
 
   return {
+    semesterName,   
+    startDate: new Date(startDate),
+    endDate: new Date(endDate),
+    totalWeeks: Number(totalWeeks),
+    weekRanges: normalizedWeekRanges,
+  };
+};
+
+export const createSubjectDto = (data) => {
+  const {
+    title,
+    subjectCode,
+    classCode,
+    location,
+    session,
+    startTime,
+    endTime,
+    startDate,
+    teacherId,
+    studentIds,
+    classId
+  } = data;
+
+  if (!title || !subjectCode || !classCode) {
+    throw new Error("Missing required subject fields");
+  }
+
+  if (!startTime || !endTime || !startDate) {
+    throw new Error("Missing datetime fields (startTime, endTime, startDate)");
+  }
+
+  if (!location || !session) {
+    throw new Error("Missing location or session");
+  }
+
+  return {
     title,
     subjectCode,
     classCode,
@@ -67,7 +68,6 @@ export const createSubjectDto = (data) => {
     startTime: new Date(startTime),
     endTime: new Date(endTime),
     startDate: new Date(startDate),
-    weekRanges: normalizedWeekRanges,
     teacherId: teacherId ? Number(teacherId) : undefined,
     studentIds: Array.isArray(studentIds) ? studentIds.map(Number) : [],
     classId: classId ? Number(classId) : undefined

@@ -35,7 +35,14 @@ export const createMessage = (
       senderId,
       conversationId,
       content,
-      attachments: { create: attachments },
+      attachments: attachments && attachments.length > 0 ? {
+        create: attachments.map(att => ({
+          name: typeof att === 'string' ? att.split('/').pop() : att.name || "Attachment",
+          url: typeof att === 'string' ? att : att.url,
+          mimeType: typeof att === 'string' ? "application/octet-stream" : att.mimeType || "application/octet-stream",
+          size: typeof att === 'string' ? 0 : att.size || 0,
+        }))
+      } : undefined
     },
     include: { sender: true, attachments: true },
   });
