@@ -1,14 +1,14 @@
 export const createAssignmentDto = (data) => {
-  const { title, content, classId, dueDate, attachments } = data;
-  if (!title || !content || !classId || !dueDate) {
-    throw new Error("Missing title, content, classId or dueDate");
+  const { title, content, classCode, dueDate, attachments } = data;
+  if (!title || !content || !classCode || !dueDate) {
+    throw new Error("Missing title, content, classCode or dueDate");
   }
 
   return {
     title,
     content,
     type: "ASSIGNMENT",
-    classId: Number(classId),
+    classCode: String(classCode),
     dueDate: new Date(dueDate),
     attachments: attachments || [],
   };

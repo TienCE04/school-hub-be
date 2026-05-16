@@ -43,9 +43,12 @@ export const upsertSubmission = (studentId, postId, data) => {
     create: {
       studentId,
       postId,
-      submittedAt: new Date(),
       status,
       attachments: { create: attachments },
+    },
+    include: {
+      student: true,
+      attachments: true,
     },
   });
 };
@@ -56,6 +59,10 @@ export const updateSubmissionGrade = async (submissionId, data) => {
     data: {
       grade: data.grade,
       feedback: data.feedback,
+    },
+    include: {
+      student: true,
+      attachments: true,
     },
   });
 };

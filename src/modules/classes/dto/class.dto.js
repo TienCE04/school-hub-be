@@ -10,19 +10,20 @@ export const createClassDto = (data) => {
 };
 
 export const createPostDto = (data) => {
-  const { title, content, type, classId, dueDate } = data;
+  const { title, content, type, classCode, dueDate, attachments } = data;
 
   if (!title?.trim()) throw new Error("Title is required");
   if (!content?.trim()) throw new Error("Content is required");
-  if (!VALID_TYPES.includes(type)) throw new Error("Invalid post type");
-  if (!classId) throw new Error("ClassId is required");
+  // Assuming VALID_TYPES is handled elsewhere or globally
+  if (!classCode) throw new Error("ClassCode is required");
 
   return {
     title: title.trim(),
     content: content.trim(),
     type,
-    classId: Number(classId),
+    classCode: String(classCode),
     dueDate: dueDate ? new Date(dueDate) : null,
+    attachments: Array.isArray(attachments) ? attachments : [],
   };
 };
 

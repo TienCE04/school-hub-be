@@ -1,19 +1,5 @@
 import prisma from "../../config/prisma.js";
 
-// GET 1 semester + subjects
-export const findSemesterWithSubjects = (semesterId) => {
-  return prisma.semester.findUnique({
-    where: { id: semesterId },
-    include: {
-      subjects: {
-        orderBy: {
-          startDate: "asc"
-        }
-      }
-    }
-  });
-};
-
 // GET all semesters 
 export const getAllSemesters = () => {
   return prisma.semester.findMany({
@@ -23,7 +9,8 @@ export const getAllSemesters = () => {
       semesterName: true,
       startDate: true,
       endDate: true,
-      totalWeeks: true
+      totalWeeks: true,
+      weekRanges: true
     }
   });
 };
@@ -35,7 +22,8 @@ export const createSemester = (data) => {
       semesterName: data.semesterName,
       startDate: data.startDate,
       endDate: data.endDate,
-      totalWeeks: data.totalWeeks
+      totalWeeks: data.totalWeeks,
+      weekRanges: data.weekRanges
     }
   });
 };
@@ -57,7 +45,6 @@ export const addSubjectToSemester = (semesterId, data) => {
       startTime: data.startTime,
       endTime: data.endTime,
       startDate: data.startDate,
-      weekRanges: data.weekRanges,
       session: data.session,
       classId: data.classId,
       semesterId,
@@ -70,28 +57,16 @@ export const addSubjectToSemester = (semesterId, data) => {
 
 // GET user's schedule (subjects)
 export const findUserSubjects = (userId, semesterId) => {
-  const whereClause = {
-    members: {
-      some: {
-        userId
-      }
-    }
-  };
-  
-  if (semesterId) {
-    whereClause.semesterId = semesterId;
-  }
-
-  return prisma.subject.findMany({
-    where: whereClause,
+  return prisma.semester.findUnique({
+    where: { id: semesterId },
     include: {
-      semester: true,
-      class: {
-        select: { id: true, name: true, code: true }
+      subjects: {
+        where: {
+          members: {
+            some: { userId }
+          }
+        }
       }
-    },
-    orderBy: {
-      startDate: "asc"
     }
   });
 };

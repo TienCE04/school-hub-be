@@ -10,7 +10,7 @@ import { SOCKET_EVENTS } from "../../realtime/events/index.js";
 export const createAssignment = async (authorId, data) => {
   // Check class tồn tại + user thuộc class + role
   const classData = await prisma.class.findUnique({
-    where: { id: data.classId },
+    where: { code: data.classCode },
     include: {
       members: {
         where: { userId: authorId },
@@ -26,11 +26,21 @@ export const createAssignment = async (authorId, data) => {
     throw new Error("Permission denied");
   }
 
-  const assignment = await repo.createAssignment(authorId, data);
+  const assignmentData = { ...data, classId: classData.id };
+  delete assignmentData.classCode;
+
+  const assignment = await repo.createAssignment(authorId, assignmentData);
 
   try {
     const io = getIO();
-    io.to(`class:${data.classId}`).emit(SOCKET_EVENTS.ASSIGNMENT_CREATED, assignment);
+    io.to(`class:${data.classId}`).emit(SOCKET_EVENTS.ASSIGNMENT_CREATED, {
+      type: "assignment",
+      data: {
+        assignmentId: assignment.id.toString(),
+        classId: assignment.classId.toString(),
+        type: "NEW_ASSIGNMENT"
+      }
+    });
   } catch (err) {
     console.error("Socket error on createAssignment:", err);
   }
@@ -99,6 +109,13 @@ export const getAssignmentDetail = async (userId, postId) => {
         submission: submission
           ? {
               id: submission.id,
+              student: {
+                id: student.id,
+                name: student.name,
+                avatar: student.avatar || "",
+                email: student.email,
+                role: student.role,
+              },
               status: submission.status,
               grade: submission.grade,
               feedback: submission.feedback,
@@ -127,6 +144,13 @@ export const getAssignmentDetail = async (userId, postId) => {
         submission: submission
           ? {
               id: submission.id,
+              student: {
+                id: currentUser.id,
+                name: currentUser.name,
+                avatar: currentUser.avatar || "",
+                email: currentUser.email,
+                role: currentUser.role,
+              },
               status: submission.status,
               grade: submission.grade,
               feedback: submission.feedback,
@@ -184,15 +208,34 @@ export const submitAssignment = async (userId, postId, attachments) => {
     const io = getIO();
     // Notify the author (teacher) of the assignment
     io.to(`user:${assignment.authorId}`).emit(SOCKET_EVENTS.NOTIFICATION_RECEIVED, {
-      type: "SUBMISSION",
-      message: `User ${userId} has submitted assignment ${postId}`,
-      submission
+      type: "notification",
+      data: {
+        id: Date.now().toString(),
+        title: "New Submission",
+        content: `User ${userId} has submitted assignment ${postId}`,
+        type: "SUBMISSION",
+        submissionId: submission.id.toString()
+      }
     });
   } catch (err) {
     console.error("Socket error on submitAssignment:", err);
   }
 
-  return submission;
+  return {
+    id: submission.id,
+    student: {
+      id: submission.student.id,
+      name: submission.student.name,
+      avatar: submission.student.avatar || "",
+      email: submission.student.email,
+      role: submission.student.role,
+    },
+    status: submission.status,
+    grade: submission.grade,
+    feedback: submission.feedback,
+    submittedAt: submission.submittedAt?.toISOString(),
+    attachments: submission.attachments,
+  };
 };
 
 /**
@@ -237,16 +280,35 @@ export const gradeSubmission = async (teacherId, submissionId, data) => {
     const io = getIO();
     // Notify the student about the grade
     io.to(`user:${submission.studentId}`).emit(SOCKET_EVENTS.NOTIFICATION_RECEIVED, {
-      type: "GRADE",
-      message: `Your submission for assignment ${submission.postId} has been graded`,
-      grade: data.grade,
-      submissionId
+      type: "notification",
+      data: {
+        id: Date.now().toString(),
+        title: "Assignment Graded",
+        content: `Your submission for assignment ${submission.postId} has been graded`,
+        type: "GRADE",
+        grade: data.grade,
+        submissionId: submissionId.toString()
+      }
     });
   } catch (err) {
     console.error("Socket error on gradeSubmission:", err);
   }
 
-  return updatedSubmission;
+  return {
+    id: updatedSubmission.id,
+    student: {
+      id: updatedSubmission.student.id,
+      name: updatedSubmission.student.name,
+      avatar: updatedSubmission.student.avatar || "",
+      email: updatedSubmission.student.email,
+      role: updatedSubmission.student.role,
+    },
+    status: updatedSubmission.status,
+    grade: updatedSubmission.grade,
+    feedback: updatedSubmission.feedback,
+    submittedAt: updatedSubmission.submittedAt?.toISOString(),
+    attachments: updatedSubmission.attachments,
+  };
 };
 
 /**
@@ -258,20 +320,31 @@ export const getMySubmissions = async (userId) => {
     include: {
       post: true,
       attachments: true,
+      student: true,
     },
     orderBy: { submittedAt: "desc" },
   });
 
   return submissions.map((s) => ({
-    id: s.id,
     assignment: {
       id: s.post.id,
       title: s.post.title,
       dueDate: s.post.dueDate,
     },
-    status: s.status,
-    grade: s.grade,
-    submittedAt: s.submittedAt,
-    attachments: s.attachments,
+    submission: {
+      id: s.id,
+      student: {
+        id: s.student.id,
+        name: s.student.name,
+        avatar: s.student.avatar || "",
+        email: s.student.email,
+        role: s.student.role,
+      },
+      status: s.status,
+      grade: s.grade,
+      feedback: s.feedback,
+      submittedAt: s.submittedAt,
+      attachments: s.attachments,
+    }
   }));
 };

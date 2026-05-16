@@ -89,7 +89,14 @@ export const sendMessage = async (senderId, data) => {
         senderId,
         conversationId: convId,
         content: data.content,
-        attachments: { create: data.attachments }
+        attachments: data.attachments && data.attachments.length > 0 ? {
+          create: data.attachments.map(att => ({
+            name: typeof att === 'string' ? att.split('/').pop() : att.name || "Attachment",
+            url: typeof att === 'string' ? att : att.url,
+            mimeType: typeof att === 'string' ? "application/octet-stream" : att.mimeType || "application/octet-stream",
+            size: typeof att === 'string' ? 0 : att.size || 0,
+          }))
+        } : undefined
       },
       include: { sender: true, attachments: true }
     });
@@ -109,8 +116,20 @@ export const sendMessage = async (senderId, data) => {
 
   try {
     const io = getIO();
+    
+    // Format message to match REST API
+    const messageDto = {
+      ...message,
+      createdAt: message.createdAt.getTime(),
+      updatedAt: message.updatedAt ? message.updatedAt.getTime() : undefined
+    };
+
     allParticipants.forEach(p => {
-      io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, message);
+      io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, {
+        type: "chat",
+        event: "new_message",
+        data: messageDto
+      });
     });
   } catch (err) {
     console.error("Socket error on sendMessage:", err);

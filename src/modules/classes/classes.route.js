@@ -7,13 +7,14 @@ const router = express.Router();
 
 router.get('/', authenticate, controller.getMyClasses);
 router.post('/join', authenticate, controller.joinClass);
-router.get('/:id', authenticate, controller.getClassById);
-router.get('/:id/members', authenticate, controller.getClassMembers);
+router.get('/:classCode', authenticate, controller.getClassByCode);
+router.get('/:classCode/members', authenticate, controller.getClassMembers);
 router.post('/', authenticate, authorize(['TEACHER', 'ADMIN']), controller.createNewClass);
 router.post('/posts', authenticate, authorize(['TEACHER','STUDENT']), controller.createNewPost);
-router.get('/:classId/posts/:postId/stats', authenticate, authorize(['TEACHER']), controller.getAssignmentStats);
+router.get('/posts/:postId', authenticate, controller.getPostById);
+router.get('/:classCode/posts/:postId/stats', authenticate, authorize(['TEACHER']), controller.getAssignmentStats);
 router.get(
-  "/:classId/assignments",
+  "/:classCode/assignments",
   authenticate,
   controller.getAssignments
 );

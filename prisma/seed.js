@@ -62,7 +62,8 @@ async function main() {
       semesterName: "Học kỳ 1 - 2026",
       startDate: new Date("2026-09-01"),
       endDate: new Date("2026-12-31"),
-      totalWeeks: 15
+      totalWeeks: 15,
+      weekRanges: [{ startWeek: 1, endWeek: 15 }]
     }
   });
   console.log(`Created Semester: ${semester.semesterName}`);
@@ -111,7 +112,6 @@ async function main() {
         startTime: new Date("2026-09-01T08:00:00Z"),
         endTime: new Date("2026-09-01T10:00:00Z"),
         startDate: new Date("2026-09-01"),
-        weekRanges: [{ startWeek: 1, endWeek: 15 }],
         session: "MORNING",
         classId: newClass.id,
         semesterId: semester.id,

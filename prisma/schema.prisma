@@ -220,6 +220,7 @@ model Semester {
   startDate    DateTime
   endDate      DateTime
   totalWeeks   Int
+  weekRanges   Json
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -241,8 +242,6 @@ model Subject {
 
   semesterId Int
   semester   Semester @relation(fields: [semesterId], references: [id])
-
-  weekRanges Json
 
   session SessionType
 

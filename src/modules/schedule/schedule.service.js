@@ -4,8 +4,8 @@ import prisma from "../../config/prisma.js";
 const toISO = (date) => date?.toISOString();
 
 
-export const getSemesterDetails = async (semesterId) => {
-  const semester = await repo.findSemesterWithSubjects(semesterId);
+export const getSemesterDetails = async (userId, semesterId) => {
+  const semester = await repo.findUserSubjects(userId, semesterId);
 
   if (!semester) {
     throw new Error("Semester not found");
@@ -14,9 +14,10 @@ export const getSemesterDetails = async (semesterId) => {
   return {
     id: semester.id,
     semesterName: semester.semesterName,
-    startDate: toISO(semester.startDate),
-    endDate: toISO(semester.endDate),
+    semesterStartDate: toISO(semester.startDate),
+    semesterEndDate: toISO(semester.endDate),
     totalWeeks: semester.totalWeeks,
+    weekRanges: semester.weekRanges,
     subjects: semester.subjects.map((s) => ({
       id: s.id,
       title: s.title,
@@ -26,7 +27,6 @@ export const getSemesterDetails = async (semesterId) => {
       startTime: toISO(s.startTime),
       endTime: toISO(s.endTime),
       startDate: toISO(s.startDate),
-      weekRanges: s.weekRanges,
       session: s.session,
       classId: s.classId
     }))
@@ -79,42 +79,42 @@ export const addSubjectToSemester = async (semesterId, data) => {
 
   // Auto-create or link Class with Users
   if (!classId && (data.teacherId || (data.studentIds && data.studentIds.length > 0))) {
-     const uniqueCode = await generateUniqueClassCode();
-     
-     const connectUsers = [];
-     if (data.teacherId) connectUsers.push({ id: data.teacherId });
-     if (data.studentIds && data.studentIds.length > 0) {
-        data.studentIds.forEach(id => connectUsers.push({ id }));
-     }
+    const uniqueCode = await generateUniqueClassCode();
 
-     const newClass = await prisma.class.create({
-       data: {
-         name: `${data.title} - ${data.classCode}`,
-         code: uniqueCode,
-         members: {
-           create: connectUsers.map(u => ({ userId: u.id }))
-         }
-       }
-     });
-     classId = newClass.id;
+    const connectUsers = [];
+    if (data.teacherId) connectUsers.push({ id: data.teacherId });
+    if (data.studentIds && data.studentIds.length > 0) {
+      data.studentIds.forEach(id => connectUsers.push({ id }));
+    }
+
+    const newClass = await prisma.class.create({
+      data: {
+        name: `${data.title} - ${data.classCode}`,
+        code: uniqueCode,
+        members: {
+          create: connectUsers.map(u => ({ userId: u.id }))
+        }
+      }
+    });
+    classId = newClass.id;
   } else if (classId) {
-     const connectUsers = [];
-     if (data.teacherId) connectUsers.push({ id: data.teacherId });
-     if (data.studentIds && data.studentIds.length > 0) {
-        data.studentIds.forEach(id => connectUsers.push({ id }));
-     }
-     
-     if (connectUsers.length > 0) {
-        await prisma.classMember.createMany({
-          data: connectUsers.map(u => ({ userId: u.id, classId })),
-          skipDuplicates: true
-        });
-     }
+    const connectUsers = [];
+    if (data.teacherId) connectUsers.push({ id: data.teacherId });
+    if (data.studentIds && data.studentIds.length > 0) {
+      data.studentIds.forEach(id => connectUsers.push({ id }));
+    }
+
+    if (connectUsers.length > 0) {
+      await prisma.classMember.createMany({
+        data: connectUsers.map(u => ({ userId: u.id, classId })),
+        skipDuplicates: true
+      });
+    }
   }
 
   const subjectData = {
-      ...data,
-      classId
+    ...data,
+    classId
   };
 
   return repo.addSubjectToSemester(semesterId, subjectData);
@@ -129,29 +129,4 @@ const generateUniqueClassCode = async () => {
     if (!found) exists = false;
   }
   return code;
-};
-
-export const getMySchedule = async (userId, semesterId) => {
-  const subjects = await repo.findUserSubjects(userId, semesterId);
-
-  return subjects.map((s) => ({
-    id: s.id,
-    title: s.title,
-    subjectCode: s.subjectCode,
-    classCode: s.classCode,
-    location: s.location,
-    startTime: toISO(s.startTime),
-    endTime: toISO(s.endTime),
-    startDate: toISO(s.startDate),
-    weekRanges: s.weekRanges,
-    session: s.session,
-    classId: s.classId,
-    className: s.class ? s.class.name : null,
-    semester: {
-      id: s.semester.id,
-      semesterName: s.semester.semesterName,
-      startDate: toISO(s.semester.startDate),
-      endDate: toISO(s.semester.endDate),
-    }
-  }));
 };
