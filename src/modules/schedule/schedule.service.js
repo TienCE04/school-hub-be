@@ -42,8 +42,7 @@ export const getAllSemesters = async () => {
     semesterName: s.semesterName,
     startDate: toISO(s.startDate),
     endDate: toISO(s.endDate),
-    totalWeeks: s.totalWeeks,
-    weekRanges: s.weekRanges
+    totalWeeks: s.totalWeeks
   }));
 };
 

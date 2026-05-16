@@ -1,9 +1,24 @@
 import * as service from "./classes.service.js";
 import { createClassDto, createPostDto } from "./dto/class.dto.js";
 
-export const getClassById = async (req, res) => {
+export const getClassByCode = async (req, res) => {
   try {
-    const result = await service.getClassDetails(parseInt(req.params.id));
+    const classCode = req.params.classCode;
+    const result = await service.getClassDetails(classCode);
+    res.json(result);
+  } catch (e) {
+    res.status(404).json({ message: e.message });
+  }
+};
+
+export const getPostById = async (req, res) => {
+  try {
+    const postId = parseInt(req.params.postId);
+    if (isNaN(postId)) {
+      return res.status(400).json({ message: "Invalid post ID" });
+    }
+    const userId = req.user.id;
+    const result = await service.getPostById(postId, userId);
     res.json(result);
   } catch (e) {
     res.status(404).json({ message: e.message });
@@ -33,8 +48,8 @@ export const createNewPost = async (req, res) => {
 export const getAssignmentStats = async (req, res) => {
   try {
     const postId = parseInt(req.params.postId);
-    const classId = parseInt(req.params.classId);
-    const result = await service.getAssignmentStats(postId, classId);
+    const classCode = req.params.classCode;
+    const result = await service.getAssignmentStats(postId, classCode);
     res.json(result);
   } catch (e) {
     res.status(400).json({ message: e.message });
@@ -43,11 +58,11 @@ export const getAssignmentStats = async (req, res) => {
 
 export const getAssignments = async (req, res) => {
   try {
-    const classId = parseInt(req.params.classId);
+    const classCode = req.params.classCode;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
 
-    const result = await service.getAssignments(classId, page, limit);
+    const result = await service.getAssignments(classCode, page, limit);
     res.json(result);
   } catch (e) {
     res.status(400).json({ message: e.message });
@@ -56,8 +71,8 @@ export const getAssignments = async (req, res) => {
 
 export const getClassMembers = async (req, res) => {
   try {
-    const classId = parseInt(req.params.id);
-    const result = await service.getClassMembers(classId);
+    const classCode = req.params.classCode;
+    const result = await service.getClassMembers(classCode);
     res.json(result);
   } catch (e) {
     res.status(404).json({ message: e.message });

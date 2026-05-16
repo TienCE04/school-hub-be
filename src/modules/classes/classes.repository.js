@@ -45,6 +45,17 @@ export const findClassById = (classId) => {
   });
 };
 
+export const findPostById = (postId) => {
+  return prisma.post.findUnique({
+    where: { id: postId },
+    include: {
+      author: true,
+      attachments: true,
+      comments: { include: { author: true, attachments: true } },
+    },
+  });
+};
+
 export const findPostsByClass = async (classId, page = 1, limit = 10) => {
   const [data, total] = await Promise.all([
     prisma.post.findMany({

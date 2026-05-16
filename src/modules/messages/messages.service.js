@@ -125,7 +125,11 @@ export const sendMessage = async (senderId, data) => {
     };
 
     allParticipants.forEach(p => {
-      io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, messageDto);
+      io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, {
+        type: "chat",
+        event: "new_message",
+        data: messageDto
+      });
     });
   } catch (err) {
     console.error("Socket error on sendMessage:", err);

@@ -3,9 +3,11 @@ import prisma from "../../config/prisma.js";
 import { getIO } from "../../realtime/gateway/index.js";
 import { SOCKET_EVENTS } from "../../realtime/events/index.js";
 
-export const getClassDetails = async (classId) => {
-  const classData = await repo.findClassWithPosts(classId);
-  if (!classData) throw new Error("Class not found");
+export const getClassDetails = async (classCode) => {
+  const classObj = await repo.findClassByCode(classCode);
+  if (!classObj) throw new Error("Class not found");
+  const classData = await repo.findClassWithPosts(classObj.id);
+  if (!classData) throw new Error("Class details not found");
 
   return {
     id: classData.id.toString(),
@@ -16,18 +18,52 @@ export const getClassDetails = async (classId) => {
       content: post.content,
       type: post.type,
       createdAt: post.createdAt,
+      updatedAt: post.updatedAt,
       author: {
+        id: post.author.id,
         name: post.author.name,
+        avatar: post.author.avatar || "",
         email: post.author.email,
         role: post.author.role,
       },
       attachments: post.attachments,
+      comments: post.comments || [],
     })),
   };
 };
 
+export const getPostById = async (postId, userId) => {
+  const post = await repo.findPostById(postId);
+  if (!post) throw new Error("Post not found");
+
+  const isMember = await repo.checkClassMembership(userId, post.classId);
+  if (!isMember) {
+    throw new Error("You are not a member of this class");
+  }
+
+  return {
+    id: post.id,
+    title: post.title,
+    content: post.content,
+    type: post.type,
+    createdAt: post.createdAt,
+    updatedAt: post.updatedAt,
+    dueDate: post.dueDate,
+    classId: post.classId,
+    author: {
+      id: post.author.id,
+      name: post.author.name,
+      avatar: post.author.avatar || "",
+      email: post.author.email,
+      role: post.author.role,
+    },
+    attachments: post.attachments,
+    comments: post.comments || [],
+  };
+};
+
 export const createPost = async (data, user) => {
-  const classExists = await repo.findClassById(data.classId);
+  const classExists = await repo.findClassByCode(data.classCode);
   if (!classExists) throw new Error("Class not found");
   if (data.type === "ASSIGNMENT" && !data.dueDate) {
     throw new Error("Due date is required for assignments");
@@ -36,11 +72,22 @@ export const createPost = async (data, user) => {
   if (data.type === "ASSIGNMENT" && user.role !== "TEACHER") {
     throw new Error("Only teacher can create assignment");
   }
-  const post = await repo.createPost(user.id, data);
+
+  const postData = { ...data, classId: classExists.id };
+  delete postData.classCode;
+
+  const post = await repo.createPost(user.id, postData);
 
   try {
     const io = getIO();
-    io.to(`class:${data.classId}`).emit(SOCKET_EVENTS.POST_CREATED, post);
+    io.to(`class:${data.classId}`).emit(SOCKET_EVENTS.POST_CREATED, {
+      type: "post",
+      data: {
+        postId: post.id.toString(),
+        groupId: post.classId.toString(),
+        type: "NEW_POST"
+      }
+    });
   } catch (err) {
     console.error("Socket error on createPost:", err);
   }
@@ -48,7 +95,11 @@ export const createPost = async (data, user) => {
   return post;
 };
 
-export const getAssignmentStats = async (postId, classId) => {
+export const getAssignmentStats = async (postId, classCode) => {
+  const classObj = await repo.findClassByCode(classCode);
+  if (!classObj) throw new Error("Class not found");
+  const classId = classObj.id;
+
   const [totalStudents, submittedCount, lateCount] = await Promise.all([
     prisma.user.count({
       where: { role: "STUDENT", classId },
@@ -69,11 +120,11 @@ export const getAssignmentStats = async (postId, classId) => {
   };
 };
 
-export const getAssignments = async (classId, page, limit) => {
-  const classExists = await repo.findClassById(classId);
+export const getAssignments = async (classCode, page, limit) => {
+  const classExists = await repo.findClassByCode(classCode);
   if (!classExists) throw new Error("Class not found");
 
-  return repo.findAssignmentsByClass(classId, page, limit);
+  return repo.findAssignmentsByClass(classExists.id, page, limit);
 };
 
 export const createClass = async (data) => {
@@ -113,11 +164,11 @@ const generateUniqueClassCode = async () => {
   return code;
 };
 
-export const getClassMembers = async (classId) => {
-  const classExists = await repo.findClassById(classId);
+export const getClassMembers = async (classCode) => {
+  const classExists = await repo.findClassByCode(classCode);
   if (!classExists) throw new Error("Class not found");
 
-  const members = await repo.findClassMembers(classId);
+  const members = await repo.findClassMembers(classExists.id);
 
   return members.map((m) => ({
     id: m.user.id,
