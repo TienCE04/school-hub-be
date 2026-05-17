@@ -24,6 +24,31 @@ router.post(
 );
 
 /**
+ * GET MY TASKS (student dashboard)
+ * Upcoming, past due, submitted
+ * Only STUDENT
+ * GET /assignments/my-tasks
+ */
+router.get(
+  "/my-tasks",
+  authenticate,
+  authorize(["STUDENT"]),
+  controller.getMyTasks,
+);
+
+/**
+ * GET MY SUBMISSIONS (student dashboard)
+ * Only STUDENT
+ * GET /assignments/my-submissions
+ */
+router.get(
+  "/my-submissions",
+  authenticate,
+  authorize(["STUDENT"]),
+  controller.getMySubmissions,
+);
+
+/**
  * GET ASSIGNMENT DETAIL
  * Student / Teacher đều xem được
  * GET /assignments/:id
@@ -52,18 +77,6 @@ router.post(
   authenticate,
   authorize(["TEACHER", "ADMIN"]),
   controller.gradeSubmission,
-);
-
-/**
- * GET MY SUBMISSIONS (student dashboard)
- * Only STUDENT
- * GET /assignments/my-submissions
- */
-router.get(
-  "/my-submissions",
-  authenticate,
-  authorize(["STUDENT"]),
-  controller.getMySubmissions,
 );
 
 export default router;

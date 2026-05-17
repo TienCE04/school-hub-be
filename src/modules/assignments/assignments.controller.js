@@ -3,6 +3,7 @@ import * as service from "./assignments.service.js";
 import {
   createAssignmentDto,
   submitAssignmentDto,
+  gradeSubmissionDto,
 } from "./dto/assignment.dto.js";
 
 export const createAssignment = async (req, res) => {
@@ -68,6 +69,15 @@ export const gradeSubmission = async (req, res) => {
 export const getMySubmissions = async (req, res) => {
   try {
     const result = await service.getMySubmissions(req.user.id);
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+};
+
+export const getMyTasks = async (req, res) => {
+  try {
+    const result = await service.getMyTasks(req.user.id);
     return res.status(200).json(result);
   } catch (error) {
     return res.status(400).json({ error: error.message });

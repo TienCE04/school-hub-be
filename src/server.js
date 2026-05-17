@@ -27,3 +27,4 @@ async function startServer() {
 }
 
 startServer();
+// triggered restart

@@ -108,20 +108,20 @@ export const getAssignmentDetail = async (userId, postId) => {
         },
         submission: submission
           ? {
-              id: submission.id,
-              student: {
-                id: student.id,
-                name: student.name,
-                avatar: student.avatar || "",
-                email: student.email,
-                role: student.role,
-              },
-              status: submission.status,
-              grade: submission.grade,
-              feedback: submission.feedback,
-              submittedAt: submission.submittedAt?.toISOString(),
-              attachments: submission.attachments,
-            }
+            id: submission.id,
+            student: {
+              id: student.id,
+              name: student.name,
+              avatar: student.avatar || "",
+              email: student.email,
+              role: student.role,
+            },
+            status: submission.status,
+            grade: submission.grade,
+            feedback: submission.feedback,
+            submittedAt: submission.submittedAt?.toISOString(),
+            attachments: submission.attachments,
+          }
           : null,
       };
     });
@@ -143,20 +143,20 @@ export const getAssignmentDetail = async (userId, postId) => {
         },
         submission: submission
           ? {
-              id: submission.id,
-              student: {
-                id: currentUser.id,
-                name: currentUser.name,
-                avatar: currentUser.avatar || "",
-                email: currentUser.email,
-                role: currentUser.role,
-              },
-              status: submission.status,
-              grade: submission.grade,
-              feedback: submission.feedback,
-              submittedAt: submission.submittedAt?.toISOString(),
-              attachments: submission.attachments,
-            }
+            id: submission.id,
+            student: {
+              id: currentUser.id,
+              name: currentUser.name,
+              avatar: currentUser.avatar || "",
+              email: currentUser.email,
+              role: currentUser.role,
+            },
+            status: submission.status,
+            grade: submission.grade,
+            feedback: submission.feedback,
+            submittedAt: submission.submittedAt?.toISOString(),
+            attachments: submission.attachments,
+          }
           : null,
       },
     ];
@@ -348,3 +348,70 @@ export const getMySubmissions = async (userId) => {
     }
   }));
 };
+
+/**
+ * GET MY TASKS
+ * Groups assignments into upcoming, pastDue, and submitted
+ */
+export const getMyTasks = async (userId) => {
+  const assignments = await prisma.post.findMany({
+    where: {
+      type: "ASSIGNMENT",
+      class: {
+        members: {
+          some: { userId },
+        },
+      },
+    },
+    include: {
+      class: true,
+      submissions: {
+        where: { studentId: userId },
+      },
+    },
+    orderBy: { dueDate: "asc" },
+  });
+
+  const now = new Date();
+  const upcoming = [];
+  const pastDue = [];
+  const submitted = [];
+
+  assignments.forEach((assignment) => {
+    const hasSubmission = assignment.submissions && assignment.submissions.length > 0;
+
+    const taskData = {
+      id: assignment.id,
+      title: assignment.title,
+      content: assignment.content,
+      dueDate: assignment.dueDate,
+      classCode: assignment.class.code,
+      className: assignment.class.name,
+      submission: hasSubmission
+        ? {
+          id: assignment.submissions[0].id,
+          submittedAt: assignment.submissions[0].submittedAt,
+          grade: assignment.submissions[0].grade,
+          feedback: assignment.submissions[0].feedback,
+          status: assignment.submissions[0].status,
+          postId: assignment.submissions[0].postId,
+          studentId: assignment.submissions[0].studentId,
+        }
+        : null,
+    };
+
+    if (hasSubmission) {
+      submitted.push(taskData);
+    } else {
+      if (assignment.dueDate && assignment.dueDate < now) {
+        pastDue.push(taskData);
+      } else {
+        upcoming.push(taskData);
+      }
+    }
+  });
+
+  return { upcoming, pastDue, submitted };
+};
+
+
