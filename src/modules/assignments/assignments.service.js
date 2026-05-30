@@ -217,6 +217,14 @@ export const submitAssignment = async (userId, postId, attachments) => {
         submissionId: submission.id.toString()
       }
     });
+
+    // Also emit SUBMISSION_CREATED to the teacher
+    io.to(`user:${assignment.authorId}`).emit(SOCKET_EVENTS.SUBMISSION_CREATED, {
+      submissionId: submission.id.toString(),
+      assignmentId: postId.toString(),
+      studentId: userId.toString(),
+      status: submission.status
+    });
   } catch (err) {
     console.error("Socket error on submitAssignment:", err);
   }
@@ -289,6 +297,13 @@ export const gradeSubmission = async (teacherId, submissionId, data) => {
         grade: data.grade,
         submissionId: submissionId.toString()
       }
+    });
+
+    // Also emit SUBMISSION_GRADED
+    io.to(`user:${submission.studentId}`).emit(SOCKET_EVENTS.SUBMISSION_GRADED, {
+      submissionId: submissionId.toString(),
+      assignmentId: submission.postId.toString(),
+      grade: data.grade
     });
   } catch (err) {
     console.error("Socket error on gradeSubmission:", err);

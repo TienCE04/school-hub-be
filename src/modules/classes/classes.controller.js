@@ -28,7 +28,7 @@ export const getPostById = async (req, res) => {
 export const createNewClass = async (req, res) => {
   try {
     const data = createClassDto(req.body);
-    const result = await service.createClass(data);
+    const result = await service.createClass(data, req.user);
     res.status(201).json(result);
   } catch (e) {
     res.status(400).json({ message: e.message });
@@ -98,6 +98,32 @@ export const joinClass = async (req, res) => {
     }
     const result = await service.joinClassByCode(userId, code);
     res.status(200).json(result);
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
+export const getJoinRequests = async (req, res) => {
+  try {
+    const teacherId = req.user.id;
+    const { classCode } = req.params;
+    const result = await service.getJoinRequests(teacherId, classCode);
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
+export const handleJoinRequest = async (req, res) => {
+  try {
+    const teacherId = req.user.id;
+    const { classCode, requestId } = req.params;
+    const { status } = req.body;
+    if (!status) {
+      return res.status(400).json({ message: "Status is required (APPROVED or REJECTED)" });
+    }
+    const result = await service.handleJoinRequest(teacherId, classCode, parseInt(requestId), status);
+    res.json(result);
   } catch (e) {
     res.status(400).json({ message: e.message });
   }

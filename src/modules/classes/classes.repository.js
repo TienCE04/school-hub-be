@@ -200,3 +200,55 @@ export const addClassMember = (userId, classId) => {
     },
   });
 };
+
+export const createJoinRequest = (userId, classId) => {
+  return prisma.classJoinRequest.create({
+    data: {
+      userId,
+      classId,
+      status: "PENDING"
+    }
+  });
+};
+
+export const findJoinRequest = (userId, classId) => {
+  return prisma.classJoinRequest.findUnique({
+    where: {
+      userId_classId: { userId, classId }
+    }
+  });
+};
+
+export const findJoinRequestById = (id) => {
+  return prisma.classJoinRequest.findUnique({
+    where: { id }
+  });
+}
+
+export const findJoinRequestsByClass = (classId) => {
+  return prisma.classJoinRequest.findMany({
+    where: { 
+      classId,
+      status: "PENDING"
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatar: true,
+          role: true,
+        }
+      }
+    },
+    orderBy: { createdAt: "desc" }
+  });
+};
+
+export const updateJoinRequestStatus = (id, status) => {
+  return prisma.classJoinRequest.update({
+    where: { id },
+    data: { status }
+  });
+};

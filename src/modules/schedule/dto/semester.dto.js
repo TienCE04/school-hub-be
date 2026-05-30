@@ -24,7 +24,7 @@ export const createSemesterDto = (data) => {
   });
 
   return {
-    semesterName,   
+    semesterName,
     startDate: new Date(startDate),
     endDate: new Date(endDate),
     totalWeeks: Number(totalWeeks),
@@ -47,7 +47,7 @@ export const createSubjectDto = (data) => {
     classId
   } = data;
 
-  if (!title || !subjectCode || !classCode) {
+  if (!title || !subjectCode) {
     throw new Error("Missing required subject fields");
   }
 
@@ -59,10 +59,15 @@ export const createSubjectDto = (data) => {
     throw new Error("Missing location or session");
   }
 
+  let finalClassCode = classCode;
+  if (!finalClassCode) {
+    finalClassCode = Math.floor(100000 + Math.random() * 900000).toString();
+  }
+
   return {
     title,
     subjectCode,
-    classCode,
+    classCode: String(finalClassCode),
     location,
     session,
     startTime: new Date(startTime),

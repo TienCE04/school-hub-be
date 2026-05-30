@@ -29,6 +29,12 @@ enum SubmissionStatus {
   GRADED
 }
 
+enum JoinRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum ConversationType {
   PRIVATE
   GROUP
@@ -59,6 +65,7 @@ model User {
   posts       Post[]       @relation("UserPosts")
   comments    Comment[]    @relation("UserComments")
   submissions Submission[] @relation("UserSubmissions")
+  joinRequests ClassJoinRequest[]
 
   participants Participant[]
   messages     Message[]     @relation("UserMessages")
@@ -76,10 +83,11 @@ model Class {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  posts    Post[]
-  members  ClassMember[]
-  subjects Subject[]
+  posts      Post[]
+  members    ClassMember[]
+  subject    Subject?
   driveFiles DriveFile[]
+  joinRequests ClassJoinRequest[]
 }
 
 model ClassMember {
@@ -87,6 +95,20 @@ model ClassMember {
   userId    Int
   classId   Int
   joinedAt  DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, classId])
+}
+
+model ClassJoinRequest {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  classId   Int
+  status    JoinRequestStatus @default(PENDING)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
@@ -237,7 +259,7 @@ model Subject {
   endTime     DateTime
   startDate   DateTime
 
-  classId Int?
+  classId Int?     @unique
   class   Class? @relation(fields: [classId], references: [id])
 
   semesterId Int

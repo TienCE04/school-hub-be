@@ -65,6 +65,19 @@ export const sendMessage = async (senderId, data) => {
           }
         }
       });
+
+      try {
+        const io = getIO();
+        const convData = {
+          id: existing.id,
+          type: existing.type,
+          participants: [senderId, data.receiverId]
+        };
+        io.to(`user:${senderId}`).emit(SOCKET_EVENTS.CONVERSATION_CREATED, convData);
+        io.to(`user:${data.receiverId}`).emit(SOCKET_EVENTS.CONVERSATION_CREATED, convData);
+      } catch (err) {
+        console.error("Socket error on create conversation:", err);
+      }
     }
 
     convId = existing.id;
@@ -116,7 +129,7 @@ export const sendMessage = async (senderId, data) => {
 
   try {
     const io = getIO();
-    
+
     // Format message to match REST API
     const messageDto = {
       ...message,
@@ -131,6 +144,7 @@ export const sendMessage = async (senderId, data) => {
         data: messageDto
       });
     });
+
   } catch (err) {
     console.error("Socket error on sendMessage:", err);
   }

@@ -127,7 +127,7 @@ export const getAssignments = async (classCode, page, limit) => {
   return repo.findAssignmentsByClass(classExists.id, page, limit);
 };
 
-export const createClass = async (data) => {
+export const createClass = async (data, user) => {
   let code = data.code;
   if (!code) {
     code = await generateUniqueClassCode();
@@ -138,12 +138,50 @@ export const createClass = async (data) => {
     }
   }
 
+  // Find if there is a Subject with this classCode
+  const subject = await prisma.subject.findFirst({
+    where: { classCode: code },
+    include: { members: true }
+  });
+
+  if (subject && subject.classId) {
+    throw new Error("This subject already has an associated class");
+  }
+
   const { code: _code, ...restData } = data; // Remove code from data to avoid conflict if any
 
-  const newClass = await repo.createClass({
-    ...restData,
-    code,
+  // Prepare members for the Class
+  // Automatically add the creator (user) and all Subject members to the Class
+  const membersToCreate = [];
+  if (user) {
+    membersToCreate.push({ userId: user.id });
+  }
+  if (subject && subject.members) {
+    subject.members.forEach((m) => {
+      if (!user || m.userId !== user.id) {
+        membersToCreate.push({ userId: m.userId });
+      }
+    });
+  }
+
+  const newClass = await prisma.class.create({
+    data: {
+      ...restData,
+      code,
+      members: membersToCreate.length > 0 ? {
+        create: membersToCreate
+      } : undefined
+    }
   });
+
+  // If there is a matching Subject, link the Subject to the newly created Class
+  if (subject) {
+    await prisma.subject.update({
+      where: { id: subject.id },
+      data: { classId: newClass.id }
+    });
+  }
+
   return newClass;
 };
 
@@ -203,10 +241,89 @@ export const joinClassByCode = async (userId, code) => {
     throw new Error("You are already a member of this class");
   }
 
-  await repo.addClassMember(userId, classToJoin.id);
+  const existingReq = await repo.findJoinRequest(userId, classToJoin.id);
+  if (existingReq && existingReq.status === "PENDING") {
+    throw new Error("You already have a pending request for this class");
+  }
+
+  await repo.createJoinRequest(userId, classToJoin.id);
+
+  try {
+    const io = getIO();
+    io.to(`class:${classToJoin.id}`).emit(SOCKET_EVENTS.CLASS_JOIN_REQUESTED, {
+      classId: classToJoin.id,
+      userId,
+    });
+  } catch (err) {
+    console.error("Socket error on joinClassByCode:", err);
+  }
 
   return {
-    message: "Successfully joined the class",
+    message: "Successfully sent join request. Please wait for approval.",
     classId: classToJoin.id,
   };
+};
+
+export const getJoinRequests = async (teacherId, classCode) => {
+  const classObj = await repo.findClassByCode(classCode);
+  if (!classObj) throw new Error("Class not found");
+
+  const isTeacherMember = await repo.checkClassMembership(teacherId, classObj.id);
+  if (!isTeacherMember) throw new Error("You do not have permission to view requests");
+
+  return await repo.findJoinRequestsByClass(classObj.id);
+};
+
+export const handleJoinRequest = async (teacherId, classCode, requestId, status) => {
+  const classObj = await repo.findClassByCode(classCode);
+  if (!classObj) throw new Error("Class not found");
+
+  const isTeacherMember = await repo.checkClassMembership(teacherId, classObj.id);
+  if (!isTeacherMember) throw new Error("You do not have permission to handle requests");
+
+  const joinReq = await repo.findJoinRequestById(requestId);
+  if (!joinReq || joinReq.classId !== classObj.id) {
+    throw new Error("Join request not found");
+  }
+
+  if (joinReq.status !== "PENDING") {
+    throw new Error("Join request is already handled");
+  }
+
+  if (status !== "APPROVED" && status !== "REJECTED") {
+    throw new Error("Invalid status");
+  }
+
+  await repo.updateJoinRequestStatus(requestId, status);
+
+  if (status === "APPROVED") {
+    const isMember = await repo.checkClassMembership(joinReq.userId, classObj.id);
+    if (!isMember) {
+      await repo.addClassMember(joinReq.userId, classObj.id);
+      
+      try {
+        const io = getIO();
+        io.to(`class:${classObj.id}`).emit(SOCKET_EVENTS.MEMBER_ADDED, {
+          classId: classObj.id,
+          userId: joinReq.userId,
+        });
+        io.to(`user:${joinReq.userId}`).emit(SOCKET_EVENTS.CLASS_JOIN_APPROVED, {
+          classId: classObj.id,
+        });
+      } catch (err) {
+        console.error("Socket error on member added:", err);
+      }
+    }
+  } else if (status === "REJECTED") {
+    try {
+      const io = getIO();
+      io.to(`user:${joinReq.userId}`).emit(SOCKET_EVENTS.CLASS_JOIN_REJECTED, {
+        classId: classObj.id,
+      });
+    } catch (err) {
+      console.error("Socket error on request rejected:", err);
+    }
+  }
+
+  return { message: `Request has been ${status.toLowerCase()}` };
 };

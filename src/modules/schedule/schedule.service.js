@@ -75,49 +75,7 @@ export const addSubjectToSemester = async (semesterId, data) => {
     throw new Error("title and subjectCode are required");
   }
 
-  let classId = data.classId;
-
-  // Auto-create or link Class with Users
-  if (!classId && (data.teacherId || (data.studentIds && data.studentIds.length > 0))) {
-    const uniqueCode = await generateUniqueClassCode();
-
-    const connectUsers = [];
-    if (data.teacherId) connectUsers.push({ id: data.teacherId });
-    if (data.studentIds && data.studentIds.length > 0) {
-      data.studentIds.forEach(id => connectUsers.push({ id }));
-    }
-
-    const newClass = await prisma.class.create({
-      data: {
-        name: `${data.title} - ${data.classCode}`,
-        code: uniqueCode,
-        members: {
-          create: connectUsers.map(u => ({ userId: u.id }))
-        }
-      }
-    });
-    classId = newClass.id;
-  } else if (classId) {
-    const connectUsers = [];
-    if (data.teacherId) connectUsers.push({ id: data.teacherId });
-    if (data.studentIds && data.studentIds.length > 0) {
-      data.studentIds.forEach(id => connectUsers.push({ id }));
-    }
-
-    if (connectUsers.length > 0) {
-      await prisma.classMember.createMany({
-        data: connectUsers.map(u => ({ userId: u.id, classId })),
-        skipDuplicates: true
-      });
-    }
-  }
-
-  const subjectData = {
-    ...data,
-    classId
-  };
-
-  return repo.addSubjectToSemester(semesterId, subjectData);
+  return repo.addSubjectToSemester(semesterId, data);
 };
 
 const generateUniqueClassCode = async () => {
