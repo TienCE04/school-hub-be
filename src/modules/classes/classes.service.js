@@ -2,6 +2,7 @@ import * as repo from "./classes.repository.js";
 import prisma from "../../config/prisma.js";
 import { getIO } from "../../realtime/gateway/index.js";
 import { SOCKET_EVENTS } from "../../realtime/events/index.js";
+import { sendPushNotification, sendPushNotificationToUsers } from "../../shared/utils/fcm.js";
 
 export const getClassDetails = async (classCode) => {
   const classObj = await repo.findClassByCode(classCode);
@@ -80,19 +81,151 @@ export const createPost = async (data, user) => {
 
   try {
     const io = getIO();
-    io.to(`class:${data.classId}`).emit(SOCKET_EVENTS.POST_CREATED, {
+    const payload = {
       type: "post",
       data: {
         postId: post.id.toString(),
         groupId: post.classId.toString(),
         type: "NEW_POST"
       }
-    });
+    };
+    
+    io.to(`class:${data.classId}`).emit(SOCKET_EVENTS.POST_CREATED, payload);
+
+    // Send FCM to offline members
+    const members = await prisma.classMember.findMany({ where: { classId: classExists.id } });
+    const offlineUserIds = [];
+    for (const member of members) {
+      if (member.userId === user.id) continue;
+      const userRoom = io.sockets.adapter.rooms.get(`user:${member.userId}`);
+      if (!userRoom || userRoom.size === 0) {
+        offlineUserIds.push(member.userId);
+      }
+    }
+    if (offlineUserIds.length > 0) {
+      sendPushNotificationToUsers(offlineUserIds, payload);
+    }
   } catch (err) {
     console.error("Socket error on createPost:", err);
   }
 
   return post;
+};
+
+export const updatePost = async (postId, data, user) => {
+  const post = await repo.findPostById(postId);
+  if (!post) throw new Error("Post not found");
+  
+  if (post.authorId !== user.id && user.role !== "ADMIN") {
+    throw new Error("Permission denied to update this post");
+  }
+
+  const updatedPost = await repo.updatePost(postId, data);
+
+  try {
+    const io = getIO();
+    const payload = {
+      type: post.type === "ASSIGNMENT" ? "assignment" : "post",
+      data: {
+        id: updatedPost.id.toString(),
+        groupId: updatedPost.classId.toString(),
+        type: post.type === "ASSIGNMENT" ? "ASSIGNMENT_UPDATED" : "POST_UPDATED"
+      }
+    };
+    const eventName = post.type === "ASSIGNMENT" ? SOCKET_EVENTS.ASSIGNMENT_UPDATED : SOCKET_EVENTS.POST_UPDATED;
+    io.to(`class:${updatedPost.classId}`).emit(eventName, payload);
+    // Not sending FCM for updates unless requested, typically updates are silent
+  } catch (err) {
+    console.error("Socket error on updatePost:", err);
+  }
+
+  return updatedPost;
+};
+
+export const deletePost = async (postId, user) => {
+  const post = await repo.findPostById(postId);
+  if (!post) throw new Error("Post not found");
+  
+  if (post.authorId !== user.id && user.role !== "ADMIN" && user.role !== "TEACHER") {
+    throw new Error("Permission denied to delete this post");
+  }
+
+  await repo.deletePost(postId);
+
+  try {
+    const io = getIO();
+    const payload = {
+      type: post.type === "ASSIGNMENT" ? "assignment" : "post",
+      data: {
+        id: postId.toString(),
+        groupId: post.classId.toString(),
+        type: post.type === "ASSIGNMENT" ? "ASSIGNMENT_DELETED" : "POST_DELETED"
+      }
+    };
+    const eventName = post.type === "ASSIGNMENT" ? SOCKET_EVENTS.ASSIGNMENT_DELETED : SOCKET_EVENTS.POST_DELETED;
+    io.to(`class:${post.classId}`).emit(eventName, payload);
+  } catch (err) {
+    console.error("Socket error on deletePost:", err);
+  }
+
+  return { message: "Post deleted successfully" };
+};
+
+export const createComment = async (postId, user, content, attachments) => {
+  const post = await repo.findPostById(postId);
+  if (!post) throw new Error("Post not found");
+
+  const isMember = await repo.checkClassMembership(user.id, post.classId);
+  if (!isMember) throw new Error("You are not a member of this class");
+
+  const comment = await repo.createComment(user.id, postId, content, attachments);
+
+  try {
+    const io = getIO();
+    const payload = {
+      type: "post",
+      data: {
+        commentId: comment.id.toString(),
+        postId: postId.toString(),
+        groupId: post.classId.toString(),
+        type: "COMMENT_ADDED"
+      }
+    };
+    io.to(`class:${post.classId}`).emit(SOCKET_EVENTS.COMMENT_ADDED, payload);
+  } catch (err) {
+    console.error("Socket error on createComment:", err);
+  }
+
+  return comment;
+};
+
+export const deleteComment = async (commentId, user) => {
+  const comment = await repo.findCommentById(commentId);
+  if (!comment) throw new Error("Comment not found");
+
+  if (comment.authorId !== user.id && user.role !== "ADMIN" && user.role !== "TEACHER") {
+    throw new Error("Permission denied to delete this comment");
+  }
+
+  await repo.deleteComment(commentId);
+
+  try {
+    const io = getIO();
+    const payload = {
+      type: "post",
+      data: {
+        commentId: commentId.toString(),
+        postId: comment.postId.toString(),
+        groupId: comment.post.classId.toString(),
+        type: "COMMENT_DELETED"
+      }
+    };
+    io.to(`class:${comment.post.classId}`).emit(SOCKET_EVENTS.COMMENT_DELETED, payload);
+  } catch (err) {
+    console.error("Socket error on deleteComment:", err);
+  }
+
+  return { message: "Comment deleted successfully" };
 };
 
 export const getAssignmentStats = async (postId, classCode) => {

@@ -2,6 +2,7 @@ import * as repo from "./messages.repository.js";
 import prisma from "../../config/prisma.js";
 import { getIO } from "../../realtime/gateway/index.js";
 import { SOCKET_EVENTS } from "../../realtime/events/index.js";
+import { sendPushNotification } from "../../shared/utils/fcm.js";
 
 export const getUserConversations = async (userId) => {
   const list = await repo.getConversationsByUser(userId);
@@ -138,11 +139,24 @@ export const sendMessage = async (senderId, data) => {
     };
 
     allParticipants.forEach(p => {
-      io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, {
+      const socketPayload = {
         type: "chat",
         event: "new_message",
         data: messageDto
-      });
+      };
+
+      // Check if user is connected
+      const room = io.sockets.adapter.rooms.get(`user:${p.userId}`);
+      if (room && room.size > 0) {
+        // User is connected, emit socket event
+        io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, socketPayload);
+      } else {
+        // User is not connected, send push notification
+        // Note: We don't send push notification to the sender (unless they disconnected midway, but even then, it's their own message)
+        if (p.userId !== senderId) {
+          sendPushNotification(p.userId, socketPayload);
+        }
+      }
     });
 
   } catch (err) {

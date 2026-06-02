@@ -72,6 +72,7 @@ model User {
   driveFiles   DriveFile[]
 
   profile      Profile?
+  deviceTokens DeviceToken[]
 }
 
 model Class {
@@ -324,4 +325,12 @@ model Profile {
 
   userId        Int      @unique
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model DeviceToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
 }

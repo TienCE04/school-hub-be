@@ -21,3 +21,30 @@ export const searchUsers = async (query) => {
   });
   return users;
 };
+
+export const saveFcmToken = async (userId, token) => {
+  // Check if token already exists
+  const existingToken = await prisma.deviceToken.findUnique({
+    where: { token }
+  });
+
+  if (existingToken) {
+    if (existingToken.userId !== userId) {
+      // Token exists but belongs to another user (e.g. user logged out and another logged in)
+      // Update it to belong to the current user
+      return prisma.deviceToken.update({
+        where: { token },
+        data: { userId }
+      });
+    }
+    return existingToken;
+  }
+
+  // Create new token
+  return prisma.deviceToken.create({
+    data: {
+      userId,
+      token
+    }
+  });
+};

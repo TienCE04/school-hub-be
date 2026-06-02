@@ -45,6 +45,54 @@ export const createNewPost = async (req, res) => {
   }
 };
 
+export const updatePost = async (req, res) => {
+  try {
+    const postId = parseInt(req.params.postId);
+    if (isNaN(postId)) return res.status(400).json({ message: "Invalid post ID" });
+    const result = await service.updatePost(postId, req.body, req.user);
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
+export const deletePost = async (req, res) => {
+  try {
+    const postId = parseInt(req.params.postId);
+    if (isNaN(postId)) return res.status(400).json({ message: "Invalid post ID" });
+    const result = await service.deletePost(postId, req.user);
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
+export const createComment = async (req, res) => {
+  try {
+    const postId = parseInt(req.params.postId);
+    if (isNaN(postId)) return res.status(400).json({ message: "Invalid post ID" });
+    const { content, attachments } = req.body;
+    if (!content && (!attachments || attachments.length === 0)) {
+      return res.status(400).json({ message: "Comment must have content or attachments" });
+    }
+    const result = await service.createComment(postId, req.user, content, attachments);
+    res.status(201).json(result);
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
+export const deleteComment = async (req, res) => {
+  try {
+    const commentId = parseInt(req.params.commentId);
+    if (isNaN(commentId)) return res.status(400).json({ message: "Invalid comment ID" });
+    const result = await service.deleteComment(commentId, req.user);
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
 export const getAssignmentStats = async (req, res) => {
   try {
     const postId = parseInt(req.params.postId);

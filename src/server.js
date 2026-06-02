@@ -5,6 +5,7 @@ import express from 'express';
 import prisma from './config/prisma.js';
 
 import { initSocket } from './realtime/gateway/index.js';
+import { initFirebase } from './config/firebase.js';
 
 const PORT = process.env.PORT || 3000;
 
@@ -19,6 +20,9 @@ async function startServer() {
 
     // Initialize socket
     initSocket(server);
+
+    // Initialize Firebase Admin
+    initFirebase();
 
   } catch (err) {
     console.error(" Database connection failed:", err);

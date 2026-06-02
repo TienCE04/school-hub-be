@@ -39,6 +39,21 @@ export const createPost = (authorId, data) => {
   });
 };
 
+export const updatePost = (postId, data) => {
+  const { attachments, ...postData } = data;
+  return prisma.post.update({
+    where: { id: postId },
+    data: postData,
+    include: { author: true, attachments: true },
+  });
+};
+
+export const deletePost = (postId) => {
+  return prisma.post.delete({
+    where: { id: postId },
+  });
+};
+
 export const findClassById = (classId) => {
   return prisma.class.findUnique({
     where: { id: classId },
@@ -110,6 +125,38 @@ export const findAssignmentsByClass = async (classId, page = 1, limit = 10) => {
     data,
     pagination: { page, limit, total },
   };
+};
+
+export const createComment = (authorId, postId, content, attachments) => {
+  return prisma.comment.create({
+    data: {
+      content,
+      authorId,
+      postId,
+      attachments: attachments && attachments.length > 0 ? {
+        create: attachments.map(att => ({
+          name: typeof att === 'string' ? att.split('/').pop() : att.name || "Attachment",
+          url: typeof att === 'string' ? att : att.url,
+          mimeType: typeof att === 'string' ? "application/octet-stream" : att.mimeType || "application/octet-stream",
+          size: typeof att === 'string' ? 0 : att.size || 0,
+        }))
+      } : undefined
+    },
+    include: { author: true, attachments: true },
+  });
+};
+
+export const findCommentById = (commentId) => {
+  return prisma.comment.findUnique({
+    where: { id: commentId },
+    include: { post: true, author: true }
+  });
+};
+
+export const deleteComment = (commentId) => {
+  return prisma.comment.delete({
+    where: { id: commentId }
+  });
 };
 
 export const findCommentsByPost = async (postId, page = 1, limit = 10) => {
@@ -227,7 +274,7 @@ export const findJoinRequestById = (id) => {
 
 export const findJoinRequestsByClass = (classId) => {
   return prisma.classJoinRequest.findMany({
-    where: { 
+    where: {
       classId,
       status: "PENDING"
     },

@@ -13,3 +13,20 @@ export const searchUsers = async (req, res) => {
     res.status(500).json({ message: e.message || "Internal server error" });
   }
 };
+
+export const saveFcmToken = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ message: "FCM token is required" });
+    }
+
+    await service.saveFcmToken(userId, token);
+    res.status(200).json({ message: "FCM token saved successfully" });
+  } catch (error) {
+    console.error("Error saving FCM token:", error);
+    res.status(500).json({ message: error.message || "Internal server error" });
+  }
+};

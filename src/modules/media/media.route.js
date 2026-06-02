@@ -8,7 +8,7 @@ const router = express.Router();
 router.post(
   "/upload",
   authenticate,
-  upload.array("file", 5),
+  upload.array("files", 5),
   controller.uploadFiles,
 );
 

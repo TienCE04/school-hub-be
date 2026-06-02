@@ -2,6 +2,7 @@ import * as repo from "./assignments.repository.js";
 import prisma from "../../config/prisma.js";
 import { getIO } from "../../realtime/gateway/index.js";
 import { SOCKET_EVENTS } from "../../realtime/events/index.js";
+import { sendPushNotification, sendPushNotificationToUsers } from "../../shared/utils/fcm.js";
 
 /**
  * CREATE ASSIGNMENT
@@ -33,14 +34,30 @@ export const createAssignment = async (authorId, data) => {
 
   try {
     const io = getIO();
-    io.to(`class:${data.classId}`).emit(SOCKET_EVENTS.ASSIGNMENT_CREATED, {
+    const payload = {
       type: "assignment",
       data: {
         assignmentId: assignment.id.toString(),
         classId: assignment.classId.toString(),
         type: "NEW_ASSIGNMENT"
       }
-    });
+    };
+    
+    io.to(`class:${data.classId}`).emit(SOCKET_EVENTS.ASSIGNMENT_CREATED, payload);
+
+    // Send FCM to offline members
+    const members = classData.members;
+    const offlineUserIds = [];
+    for (const member of members) {
+      if (member.userId === authorId) continue;
+      const userRoom = io.sockets.adapter.rooms.get(`user:${member.userId}`);
+      if (!userRoom || userRoom.size === 0) {
+        offlineUserIds.push(member.userId);
+      }
+    }
+    if (offlineUserIds.length > 0) {
+      sendPushNotificationToUsers(offlineUserIds, payload);
+    }
   } catch (err) {
     console.error("Socket error on createAssignment:", err);
   }
@@ -206,8 +223,7 @@ export const submitAssignment = async (userId, postId, attachments) => {
 
   try {
     const io = getIO();
-    // Notify the author (teacher) of the assignment
-    io.to(`user:${assignment.authorId}`).emit(SOCKET_EVENTS.NOTIFICATION_RECEIVED, {
+    const payload = {
       type: "notification",
       data: {
         id: Date.now().toString(),
@@ -216,7 +232,10 @@ export const submitAssignment = async (userId, postId, attachments) => {
         type: "SUBMISSION",
         submissionId: submission.id.toString()
       }
-    });
+    };
+    
+    // Notify the author (teacher) of the assignment
+    io.to(`user:${assignment.authorId}`).emit(SOCKET_EVENTS.NOTIFICATION_RECEIVED, payload);
 
     // Also emit SUBMISSION_CREATED to the teacher
     io.to(`user:${assignment.authorId}`).emit(SOCKET_EVENTS.SUBMISSION_CREATED, {
@@ -225,6 +244,12 @@ export const submitAssignment = async (userId, postId, attachments) => {
       studentId: userId.toString(),
       status: submission.status
     });
+
+    // FCM fallback
+    const teacherRoom = io.sockets.adapter.rooms.get(`user:${assignment.authorId}`);
+    if (!teacherRoom || teacherRoom.size === 0) {
+      sendPushNotification(assignment.authorId, payload);
+    }
   } catch (err) {
     console.error("Socket error on submitAssignment:", err);
   }
@@ -286,8 +311,7 @@ export const gradeSubmission = async (teacherId, submissionId, data) => {
 
   try {
     const io = getIO();
-    // Notify the student about the grade
-    io.to(`user:${submission.studentId}`).emit(SOCKET_EVENTS.NOTIFICATION_RECEIVED, {
+    const payload = {
       type: "notification",
       data: {
         id: Date.now().toString(),
@@ -297,7 +321,10 @@ export const gradeSubmission = async (teacherId, submissionId, data) => {
         grade: data.grade,
         submissionId: submissionId.toString()
       }
-    });
+    };
+    
+    // Notify the student about the grade
+    io.to(`user:${submission.studentId}`).emit(SOCKET_EVENTS.NOTIFICATION_RECEIVED, payload);
 
     // Also emit SUBMISSION_GRADED
     io.to(`user:${submission.studentId}`).emit(SOCKET_EVENTS.SUBMISSION_GRADED, {
@@ -305,6 +332,12 @@ export const gradeSubmission = async (teacherId, submissionId, data) => {
       assignmentId: submission.postId.toString(),
       grade: data.grade
     });
+
+    // FCM fallback
+    const studentRoom = io.sockets.adapter.rooms.get(`user:${submission.studentId}`);
+    if (!studentRoom || studentRoom.size === 0) {
+      sendPushNotification(submission.studentId, payload);
+    }
   } catch (err) {
     console.error("Socket error on gradeSubmission:", err);
   }
