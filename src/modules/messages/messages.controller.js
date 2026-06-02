@@ -25,3 +25,37 @@ export const postMessage = async (req, res) => {
     });
   }
 };
+
+export const getMessages = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const conversationId = parseInt(req.params.id);
+    const skip = parseInt(req.query.skip) || 0;
+    const take = parseInt(req.query.take) || 50;
+
+    const messages = await service.getConversationMessages(userId, conversationId, skip, take);
+    res.json(messages);
+  } catch (error) {
+    console.error("Error fetching messages:", error);
+    if (error.message === "Forbidden") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    res.status(500).json({ error: "Failed to fetch messages" });
+  }
+};
+
+export const markAsRead = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const conversationId = parseInt(req.params.id);
+
+    const result = await service.markAsRead(userId, conversationId);
+    res.json(result);
+  } catch (error) {
+    console.error("Error marking messages as read:", error);
+    if (error.message === "Forbidden") {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    res.status(500).json({ error: "Failed to mark messages as read" });
+  }
+};

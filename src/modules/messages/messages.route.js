@@ -6,6 +6,8 @@ import express from 'express';
 const router = express.Router();
 
 router.get('/conversations', authenticate, controller.getConversations);
+router.get('/conversations/:id/messages', authenticate, controller.getMessages);
+router.put('/conversations/:id/read', authenticate, controller.markAsRead);
 router.post('/messages', authenticate, authorize(['TEACHER','STUDENT']), controller.postMessage);
 
 export default router;

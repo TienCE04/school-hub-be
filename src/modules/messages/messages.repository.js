@@ -14,7 +14,16 @@ export const getConversationsByUser = (userId) => {
         take: 1,
         include: {
           sender: {
-            select: { id: true, name: true, avatar: true },
+            select: { 
+              id: true, 
+              name: true, 
+              email: true, 
+              studentCode: true, 
+              avatar: true, 
+              role: true, 
+              createdAt: true, 
+              updatedAt: true 
+            },
           },
           attachments: true,
         },
@@ -61,5 +70,43 @@ export const countUnread = (conversationId, userId, lastReadAt) => {
       createdAt: { gt: lastReadAt },
       senderId: { not: userId }
     }
+  });
+};
+
+export const getMessagesByConversation = (conversationId, skip = 0, take = 50) => {
+  return prisma.message.findMany({
+    where: { conversationId },
+    orderBy: { createdAt: "desc" },
+    skip,
+    take,
+    include: {
+      sender: {
+        select: { 
+          id: true, 
+          name: true, 
+          email: true, 
+          studentCode: true, 
+          avatar: true, 
+          role: true, 
+          createdAt: true, 
+          updatedAt: true 
+        },
+      },
+      attachments: true,
+    },
+  });
+};
+
+export const markConversationAsRead = (conversationId, userId) => {
+  return prisma.participant.update({
+    where: {
+      userId_conversationId: {
+        userId,
+        conversationId,
+      },
+    },
+    data: {
+      lastReadAt: new Date(),
+    },
   });
 };

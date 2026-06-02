@@ -33,6 +33,8 @@ export const getUserConversations = async (userId) => {
             content: lastMsg.content,
             createdAt: lastMsg.createdAt.getTime(),
             sender: lastMsg.sender,
+            isRead: true,
+            status: "SENT"
           }
           : null,
         lastTime: lastMsg
@@ -112,7 +114,21 @@ export const sendMessage = async (senderId, data) => {
           }))
         } : undefined
       },
-      include: { sender: true, attachments: true }
+      include: { 
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            studentCode: true,
+            avatar: true,
+            role: true,
+            createdAt: true,
+            updatedAt: true
+          }
+        }, 
+        attachments: true 
+      }
     });
 
     await tx.conversation.update({
@@ -135,7 +151,9 @@ export const sendMessage = async (senderId, data) => {
     const messageDto = {
       ...message,
       createdAt: message.createdAt.getTime(),
-      updatedAt: message.updatedAt ? message.updatedAt.getTime() : undefined
+      updatedAt: message.updatedAt ? message.updatedAt.getTime() : undefined,
+      isRead: true,
+      status: "SENT"
     };
 
     allParticipants.forEach(p => {
@@ -163,5 +181,79 @@ export const sendMessage = async (senderId, data) => {
     console.error("Socket error on sendMessage:", err);
   }
 
-  return message;
+  return messageDto;
+};
+
+export const getConversationMessages = async (userId, conversationId, skip = 0, take = 50) => {
+  // Check if user is a participant
+  const participant = await prisma.participant.findUnique({
+    where: {
+      userId_conversationId: {
+        userId,
+        conversationId,
+      },
+    },
+  });
+
+  if (!participant) {
+    throw new Error("Forbidden");
+  }
+
+  const messages = await repo.getMessagesByConversation(conversationId, skip, take);
+
+  // Format to match MessageDto
+  return messages.map((msg) => ({
+    ...msg,
+    createdAt: msg.createdAt.getTime(),
+    updatedAt: msg.updatedAt ? msg.updatedAt.getTime() : undefined,
+    isRead: true,
+    status: "SENT"
+  }));
+};
+
+export const markAsRead = async (userId, conversationId) => {
+  // Check if user is a participant
+  const participant = await prisma.participant.findUnique({
+    where: {
+      userId_conversationId: {
+        userId,
+        conversationId,
+      },
+    },
+  });
+
+  if (!participant) {
+    throw new Error("Forbidden");
+  }
+
+  await repo.markConversationAsRead(conversationId, userId);
+
+  // Optionally emit a socket event to update the status in the UI
+  try {
+    const io = getIO();
+    const allParticipants = await prisma.participant.findMany({
+      where: { conversationId }
+    });
+
+    const socketPayload = {
+      type: "chat",
+      event: "status",
+      data: {
+        messageId: null, // indicating the whole conversation or last state
+        status: "SEEN"
+      }
+    };
+
+    allParticipants.forEach(p => {
+      // Don't send to the one who just read (or you can if you want their UI to sync)
+      const room = io.sockets.adapter.rooms.get(`user:${p.userId}`);
+      if (room && room.size > 0) {
+        io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, socketPayload);
+      }
+    });
+  } catch (err) {
+    console.error("Socket error on markAsRead:", err);
+  }
+
+  return { success: true };
 };
