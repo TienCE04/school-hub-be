@@ -4,8 +4,8 @@ import { getIO } from "../../realtime/gateway/index.js";
 import { SOCKET_EVENTS } from "../../realtime/events/index.js";
 import { sendPushNotification } from "../../shared/utils/fcm.js";
 
-export const getUserConversations = async (userId) => {
-  const list = await repo.getConversationsByUser(userId);
+export const getUserConversations = async (userId, skip = 0, take = 30) => {
+  const list = await repo.getConversationsByUser(userId, skip, take);
 
   // Map dữ liệu sang ConversationDto của App
   return Promise.all(
@@ -46,6 +46,89 @@ export const getUserConversations = async (userId) => {
   );
 };
 
+export const getConversationById = async (userId, conversationId) => {
+  const conv = await repo.getConversationById(conversationId);
+  if (!conv) {
+    throw new Error("Not found");
+  }
+
+  const myParticipantInfo = conv.participants.find(
+    (p) => p.userId === userId,
+  );
+
+  if (!myParticipantInfo) {
+    throw new Error("Forbidden");
+  }
+
+  const lastMsg = conv.messages && conv.messages.length > 0 ? conv.messages[0] : null;
+  const unreadCount = await repo.countUnread(
+    conv.id,
+    userId,
+    myParticipantInfo.lastReadAt,
+  );
+
+  return {
+    id: conv.id,
+    name: conv.type === "GROUP" ? conv.name : "PRIVATE",
+    avatar: conv.avatar,
+    type: conv.type,
+    lastMessage: lastMsg
+      ? {
+        id: lastMsg.id,
+        content: lastMsg.content,
+        createdAt: lastMsg.createdAt.getTime(),
+        sender: lastMsg.sender,
+        isRead: true,
+        status: "SENT"
+      }
+      : null,
+    lastTime: lastMsg
+      ? lastMsg.createdAt.getTime()
+      : conv.updatedAt.getTime(),
+    unreadCount,
+  };
+};
+
+export const getOrCreatePrivateConversation = async (userId, receiverId) => {
+  const privateKey = [userId, receiverId].sort().join("_");
+  let existing = await repo.findPrivateConversation(privateKey);
+
+  if (!existing) {
+    existing = await prisma.conversation.create({
+      data: {
+        type: "PRIVATE",
+        privateKey,
+        participants: {
+          create: [
+            { userId },
+            { userId: receiverId }
+          ]
+        }
+      }
+    });
+
+    try {
+      const io = getIO();
+      const convData = {
+        id: existing.id,
+        type: existing.type,
+        participants: [userId, receiverId]
+      };
+      const socketPayload = {
+        type: "chat",
+        event: "conversation_created",
+        data: convData
+      };
+      io.to(`user:${userId}`).emit(SOCKET_EVENTS.CONVERSATION_CREATED, socketPayload);
+      io.to(`user:${receiverId}`).emit(SOCKET_EVENTS.CONVERSATION_CREATED, socketPayload);
+    } catch (err) {
+      console.error("Socket error on create conversation:", err);
+    }
+  }
+
+  return existing;
+};
+
 export const sendMessage = async (senderId, data) => {
   let convId = data.conversationId;
 
@@ -76,8 +159,13 @@ export const sendMessage = async (senderId, data) => {
           type: existing.type,
           participants: [senderId, data.receiverId]
         };
-        io.to(`user:${senderId}`).emit(SOCKET_EVENTS.CONVERSATION_CREATED, convData);
-        io.to(`user:${data.receiverId}`).emit(SOCKET_EVENTS.CONVERSATION_CREATED, convData);
+        const socketPayload = {
+          type: "chat",
+          event: "conversation_created",
+          data: convData
+        };
+        io.to(`user:${senderId}`).emit(SOCKET_EVENTS.CONVERSATION_CREATED, socketPayload);
+        io.to(`user:${data.receiverId}`).emit(SOCKET_EVENTS.CONVERSATION_CREATED, socketPayload);
       } catch (err) {
         console.error("Socket error on create conversation:", err);
       }

@@ -1,6 +1,6 @@
 import prisma from "../../config/prisma.js";
 
-export const getConversationsByUser = (userId) => {
+export const getConversationsByUser = (userId, skip = 0, take = 30) => {
   return prisma.conversation.findMany({
     where: {
       participants: { some: { userId } },
@@ -30,6 +30,38 @@ export const getConversationsByUser = (userId) => {
       },
     },
     orderBy: { updatedAt: "desc" },
+    skip,
+    take,
+  });
+};
+
+export const getConversationById = (conversationId) => {
+  return prisma.conversation.findUnique({
+    where: { id: conversationId },
+    include: {
+      participants: {
+        select: { userId: true, lastReadAt: true },
+      },
+      messages: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        include: {
+          sender: {
+            select: { 
+              id: true, 
+              name: true, 
+              email: true, 
+              studentCode: true, 
+              avatar: true, 
+              role: true, 
+              createdAt: true, 
+              updatedAt: true 
+            },
+          },
+          attachments: true,
+        },
+      },
+    },
   });
 };
 
