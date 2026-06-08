@@ -7,7 +7,22 @@ export const getConversationsByUser = (userId, skip = 0, take = 30) => {
     },
     include: {
       participants: {
-        select: { userId: true, lastReadAt: true },
+        select: { 
+          userId: true, 
+          lastReadAt: true,
+          user: {
+            select: { 
+              id: true, 
+              name: true, 
+              email: true, 
+              studentCode: true, 
+              avatar: true, 
+              role: true, 
+              createdAt: true, 
+              updatedAt: true 
+            }
+          }
+        },
       },
       messages: {
         orderBy: { createdAt: "desc" },
@@ -40,7 +55,22 @@ export const getConversationById = (conversationId) => {
     where: { id: conversationId },
     include: {
       participants: {
-        select: { userId: true, lastReadAt: true },
+        select: { 
+          userId: true, 
+          lastReadAt: true,
+          user: {
+            select: { 
+              id: true, 
+              name: true, 
+              email: true, 
+              studentCode: true, 
+              avatar: true, 
+              role: true, 
+              createdAt: true, 
+              updatedAt: true 
+            }
+          }
+        },
       },
       messages: {
         orderBy: { createdAt: "desc" },

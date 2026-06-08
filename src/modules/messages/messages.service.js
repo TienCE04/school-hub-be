@@ -22,11 +22,26 @@ export const getUserConversations = async (userId, skip = 0, take = 30) => {
         myParticipantInfo.lastReadAt,
       );
 
+      const otherParticipant = conv.participants.find(p => p.userId !== userId);
+      const userObj = otherParticipant ? otherParticipant.user : conv.participants[0]?.user;
+
+      const participantUser = userObj ? {
+        id: String(userObj.id),
+        nameUser: userObj.name || "",
+        email: userObj.email || "",
+        mssv: userObj.studentCode || "",
+        avatar: userObj.avatar || "",
+        role: userObj.role || "STUDENT",
+        createdAt: userObj.createdAt,
+        updatedAt: userObj.updatedAt
+      } : null;
+
       return {
         id: conv.id,
         name: conv.type === "GROUP" ? conv.name : "PRIVATE",
         avatar: conv.avatar,
         type: conv.type,
+        participant: participantUser,
         lastMessage: lastMsg
           ? {
             id: lastMsg.id,
@@ -67,11 +82,26 @@ export const getConversationById = async (userId, conversationId) => {
     myParticipantInfo.lastReadAt,
   );
 
+  const otherParticipant = conv.participants.find(p => p.userId !== userId);
+  const userObj = otherParticipant ? otherParticipant.user : conv.participants[0]?.user;
+
+  const participantUser = userObj ? {
+    id: String(userObj.id),
+    nameUser: userObj.name || "",
+    email: userObj.email || "",
+    mssv: userObj.studentCode || "",
+    avatar: userObj.avatar || "",
+    role: userObj.role || "STUDENT",
+    createdAt: userObj.createdAt,
+    updatedAt: userObj.updatedAt
+  } : null;
+
   return {
     id: conv.id,
     name: conv.type === "GROUP" ? conv.name : "PRIVATE",
     avatar: conv.avatar,
     type: conv.type,
+    participant: participantUser,
     lastMessage: lastMsg
       ? {
         id: lastMsg.id,
@@ -99,10 +129,7 @@ export const getOrCreatePrivateConversation = async (userId, receiverId) => {
         type: "PRIVATE",
         privateKey,
         participants: {
-          create: [
-            { userId },
-            { userId: receiverId }
-          ]
+          create: Array.from(new Set([userId, receiverId])).map(id => ({ userId: id }))
         }
       }
     });
@@ -144,10 +171,7 @@ export const sendMessage = async (senderId, data) => {
           type: "PRIVATE",
           privateKey,
           participants: {
-            create: [
-              { userId: senderId },
-              { userId: data.receiverId }
-            ]
+            create: Array.from(new Set([senderId, data.receiverId])).map(id => ({ userId: id }))
           }
         }
       });
@@ -202,7 +226,7 @@ export const sendMessage = async (senderId, data) => {
           }))
         } : undefined
       },
-      include: { 
+      include: {
         sender: {
           select: {
             id: true,
@@ -214,8 +238,8 @@ export const sendMessage = async (senderId, data) => {
             createdAt: true,
             updatedAt: true
           }
-        }, 
-        attachments: true 
+        },
+        attachments: true
       }
     });
 
