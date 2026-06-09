@@ -48,6 +48,7 @@ export const getUserConversations = async (userId, skip = 0, take = 30) => {
             content: lastMsg.content,
             createdAt: lastMsg.createdAt.getTime(),
             sender: lastMsg.sender,
+            attachments: lastMsg.attachments,
             isRead: true,
             status: "SENT"
           }
@@ -108,6 +109,7 @@ export const getConversationById = async (userId, conversationId) => {
         content: lastMsg.content,
         createdAt: lastMsg.createdAt.getTime(),
         sender: lastMsg.sender,
+        attachments: lastMsg.attachments,
         isRead: true,
         status: "SENT"
       }

@@ -19,6 +19,7 @@ export const getConversationById = async (req, res) => {
   try {
     const userId = req.user.id;
     const conversationId = parseInt(req.params.id);
+    console.log("getConversationById called for conversationId:", conversationId);
     
     if (!conversationId) {
       return res.status(400).json({ error: "Invalid conversation ID" });

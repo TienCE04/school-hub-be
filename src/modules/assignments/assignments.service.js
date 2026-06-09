@@ -75,8 +75,18 @@ export const getAssignmentDetail = async (userId, postId) => {
 
   if (!assignment) throw new Error("Assignment not found");
 
-  const allStudents = assignment.class?.members?.map((m) => m.user) || [];
+  const allMembers = assignment.class?.members?.map((m) => m.user) || [];
   const submissions = assignment.submissions || [];
+
+  // ===== CHECK ROLE =====
+  const currentUser = allMembers.find((u) => u.id === userId);
+
+  if (!currentUser) {
+    throw new Error("User not in this class");
+  }
+
+  const isTeacher = ["TEACHER", "ADMIN"].includes(currentUser.role);
+  const allStudents = allMembers.filter((u) => u.role === "STUDENT");
 
   // ===== STATS =====
   const submittedCount = submissions.filter(
@@ -94,15 +104,6 @@ export const getAssignmentDetail = async (userId, postId) => {
 
   // ===== MAP =====
   const submissionMap = new Map(submissions.map((s) => [s.studentId, s]));
-
-  // ===== CHECK ROLE =====
-  const currentUser = allStudents.find((u) => u.id === userId);
-
-  if (!currentUser) {
-    throw new Error("User not in this class");
-  }
-
-  const isTeacher = ["TEACHER", "ADMIN"].includes(currentUser.role);
 
   // ===== RESPONSE =====
   let students = [];

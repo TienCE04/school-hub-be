@@ -5,7 +5,18 @@ const toISO = (date) => date?.toISOString();
 
 
 export const getSemesterDetails = async (userId, semesterId) => {
-  const semester = await repo.findUserSubjects(userId, semesterId);
+  let finalSemesterId = semesterId;
+
+  if (!finalSemesterId) {
+    const semesters = await repo.getAllSemesters();
+    if (semesters.length > 0) {
+      finalSemesterId = semesters[0].id;
+    } else {
+      throw new Error("No semesters available");
+    }
+  }
+
+  const semester = await repo.findUserSubjects(userId, finalSemesterId);
 
   if (!semester) {
     throw new Error("Semester not found");

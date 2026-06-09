@@ -9,6 +9,8 @@ let io;
 
 export const initSocket = (server) => {
   io = new Server(server, {
+    pingTimeout: 60000,
+    pingInterval: 25000,
     cors: {
       origin: "*", // Adjust this based on your frontend URL in production
       methods: ["GET", "POST"]
@@ -62,8 +64,8 @@ export const initSocket = (server) => {
       }
     }
 
-    socket.on(SOCKET_EVENTS.DISCONNECT, () => {
-      console.log(`User disconnected: ${socket.user?.id} (Socket ID: ${socket.id})`);
+    socket.on(SOCKET_EVENTS.DISCONNECT, (reason) => {
+      console.log(`User disconnected: ${socket.user?.id} (Socket ID: ${socket.id}) due to: ${reason}`);
     });
   });
 
