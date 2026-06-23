@@ -1,7 +1,12 @@
 import prisma from './src/config/prisma.js';
 
 async function main() {
-  const userId = 18; // The teacher ID we saw from the logs
+  const teacher = await prisma.user.findFirst({ where: { role: 'TEACHER' } });
+  if (!teacher) {
+    console.error("No teacher found!");
+    return;
+  }
+  const userId = teacher.id;
   
   // Find the latest semester
   const semester = await prisma.semester.findFirst({

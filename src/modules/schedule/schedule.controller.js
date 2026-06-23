@@ -6,6 +6,8 @@ export const getSemesterDetails = async (req, res) => {
 
     const userId = req.user.id;
     const semesterId = req.query.semesterId ? Number(req.query.semesterId) : undefined;
+    
+    console.log("schedule.controller.js GET /my called", { query: req.query, parsedSemesterId: semesterId });
 
     const result = await service.getSemesterDetails(userId, semesterId);
 

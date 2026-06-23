@@ -8,6 +8,8 @@ import messageRoute from "./modules/messages/messages.route.js";
 import driveRoute from "./modules/drive/drive.route.js";
 import profileRoute from "./modules/profile/profile.route.js";
 import userRoute from "./modules/users/users.route.js";
+import leaveRequestRoute from "./modules/leave_requests/leave-requests.route.js";
+import mediaRoute from "./modules/media/media.route.js";
 
 const app = express();
 
@@ -36,5 +38,11 @@ app.use("/api/drive", driveRoute);
 
 // Users
 app.use("/api/users", userRoute);
+
+// Leave Requests
+app.use("/api/leave-requests", leaveRequestRoute);
+
+// Media
+app.use("/api/media", mediaRoute);
 
 export default app;

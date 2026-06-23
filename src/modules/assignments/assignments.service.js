@@ -45,18 +45,11 @@ export const createAssignment = async (authorId, data) => {
     
     io.to(`class:${data.classId}`).emit(SOCKET_EVENTS.ASSIGNMENT_CREATED, payload);
 
-    // Send FCM to offline members
+    // Send FCM to all members
     const members = classData.members;
-    const offlineUserIds = [];
-    for (const member of members) {
-      if (member.userId === authorId) continue;
-      const userRoom = io.sockets.adapter.rooms.get(`user:${member.userId}`);
-      if (!userRoom || userRoom.size === 0) {
-        offlineUserIds.push(member.userId);
-      }
-    }
-    if (offlineUserIds.length > 0) {
-      sendPushNotificationToUsers(offlineUserIds, payload);
+    const userIds = members.filter(m => m.userId !== authorId).map(m => m.userId);
+    if (userIds.length > 0) {
+      sendPushNotificationToUsers(userIds, payload);
     }
   } catch (err) {
     console.error("Socket error on createAssignment:", err);
@@ -246,11 +239,8 @@ export const submitAssignment = async (userId, postId, attachments) => {
       status: submission.status
     });
 
-    // FCM fallback
-    const teacherRoom = io.sockets.adapter.rooms.get(`user:${assignment.authorId}`);
-    if (!teacherRoom || teacherRoom.size === 0) {
-      sendPushNotification(assignment.authorId, payload);
-    }
+    // Always send FCM
+    sendPushNotification(assignment.authorId, payload);
   } catch (err) {
     console.error("Socket error on submitAssignment:", err);
   }
@@ -334,11 +324,8 @@ export const gradeSubmission = async (teacherId, submissionId, data) => {
       grade: data.grade
     });
 
-    // FCM fallback
-    const studentRoom = io.sockets.adapter.rooms.get(`user:${submission.studentId}`);
-    if (!studentRoom || studentRoom.size === 0) {
-      sendPushNotification(submission.studentId, payload);
-    }
+    // Always send FCM
+    sendPushNotification(submission.studentId, payload);
   } catch (err) {
     console.error("Socket error on gradeSubmission:", err);
   }

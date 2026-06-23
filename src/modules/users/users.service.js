@@ -48,3 +48,12 @@ export const saveFcmToken = async (userId, token) => {
     }
   });
 };
+
+export const deleteFcmToken = async (userId, token) => {
+  return prisma.deviceToken.deleteMany({
+    where: {
+      userId,
+      token
+    }
+  });
+};

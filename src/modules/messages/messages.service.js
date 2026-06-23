@@ -282,12 +282,11 @@ export const sendMessage = async (senderId, data) => {
       if (room && room.size > 0) {
         // User is connected, emit socket event
         io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, socketPayload);
-      } else {
-        // User is not connected, send push notification
-        // Note: We don't send push notification to the sender (unless they disconnected midway, but even then, it's their own message)
-        if (p.userId !== senderId) {
-          sendPushNotification(p.userId, socketPayload);
-        }
+      }
+
+      // Always send push notification so the app can save it to local DB.
+      if (p.userId !== senderId) {
+        sendPushNotification(p.userId, socketPayload);
       }
     });
 

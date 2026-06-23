@@ -10,4 +10,7 @@ router.get("/search", authenticate, controller.searchUsers);
 // POST /api/users/fcm-token
 router.post("/fcm-token", authenticate, controller.saveFcmToken);
 
+// DELETE /api/users/fcm-token
+router.delete("/fcm-token", authenticate, controller.deleteFcmToken);
+
 export default router;

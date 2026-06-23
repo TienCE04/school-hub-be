@@ -85,25 +85,18 @@ export const createPost = async (data, user) => {
       type: "post",
       data: {
         postId: post.id.toString(),
-        groupId: post.classId.toString(),
+        classCode: classExists.code,
         type: "NEW_POST"
       }
     };
     
     io.to(`class:${data.classId}`).emit(SOCKET_EVENTS.POST_CREATED, payload);
 
-    // Send FCM to offline members
+    // Send FCM to all members
     const members = await prisma.classMember.findMany({ where: { classId: classExists.id } });
-    const offlineUserIds = [];
-    for (const member of members) {
-      if (member.userId === user.id) continue;
-      const userRoom = io.sockets.adapter.rooms.get(`user:${member.userId}`);
-      if (!userRoom || userRoom.size === 0) {
-        offlineUserIds.push(member.userId);
-      }
-    }
-    if (offlineUserIds.length > 0) {
-      sendPushNotificationToUsers(offlineUserIds, payload);
+    const userIds = members.filter(m => m.userId !== user.id).map(m => m.userId);
+    if (userIds.length > 0) {
+      sendPushNotificationToUsers(userIds, payload);
     }
   } catch (err) {
     console.error("Socket error on createPost:", err);
@@ -128,7 +121,7 @@ export const updatePost = async (postId, data, user) => {
       type: post.type === "ASSIGNMENT" ? "assignment" : "post",
       data: {
         id: updatedPost.id.toString(),
-        groupId: updatedPost.classId.toString(),
+        classCode: updatedPost.class.code,
         type: post.type === "ASSIGNMENT" ? "ASSIGNMENT_UPDATED" : "POST_UPDATED"
       }
     };
@@ -158,7 +151,7 @@ export const deletePost = async (postId, user) => {
       type: post.type === "ASSIGNMENT" ? "assignment" : "post",
       data: {
         id: postId.toString(),
-        groupId: post.classId.toString(),
+        classCode: post.class.code,
         type: post.type === "ASSIGNMENT" ? "ASSIGNMENT_DELETED" : "POST_DELETED"
       }
     };
@@ -187,7 +180,7 @@ export const createComment = async (postId, user, content, attachments) => {
       data: {
         commentId: comment.id.toString(),
         postId: postId.toString(),
-        groupId: post.classId.toString(),
+        classCode: comment.post.class.code,
         type: "COMMENT_ADDED"
       }
     };
@@ -216,7 +209,7 @@ export const deleteComment = async (commentId, user) => {
       data: {
         commentId: commentId.toString(),
         postId: comment.postId.toString(),
-        groupId: comment.post.classId.toString(),
+        classCode: comment.post.class.code,
         type: "COMMENT_DELETED"
       }
     };

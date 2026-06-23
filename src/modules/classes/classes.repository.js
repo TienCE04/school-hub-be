@@ -5,10 +5,13 @@ export const findClassWithPosts = (classId) => {
     where: { id: classId },
     include: {
       posts: {
+        orderBy: { createdAt: 'desc' },
+        take: 20,
         include: {
           author: true,
           attachments: true,
           comments: { include: { author: true, attachments: true } },
+          class: true,
         },
       },
     },
@@ -35,7 +38,7 @@ export const createPost = (authorId, data) => {
         }))
       } : undefined
     },
-    include: { author: true, attachments: true },
+    include: { author: true, attachments: true, class: true },
   });
 };
 
@@ -44,7 +47,7 @@ export const updatePost = (postId, data) => {
   return prisma.post.update({
     where: { id: postId },
     data: postData,
-    include: { author: true, attachments: true },
+    include: { author: true, attachments: true, class: true },
   });
 };
 
@@ -66,6 +69,7 @@ export const findPostById = (postId) => {
     include: {
       author: true,
       attachments: true,
+      class: true,
       comments: { include: { author: true, attachments: true } },
     },
   });
@@ -142,14 +146,14 @@ export const createComment = (authorId, postId, content, attachments) => {
         }))
       } : undefined
     },
-    include: { author: true, attachments: true },
+    include: { author: true, attachments: true, post: { include: { class: true } } },
   });
 };
 
 export const findCommentById = (commentId) => {
   return prisma.comment.findUnique({
     where: { id: commentId },
-    include: { post: true, author: true }
+    include: { post: { include: { class: true } }, author: true }
   });
 };
 

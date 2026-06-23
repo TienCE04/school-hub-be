@@ -30,3 +30,20 @@ export const saveFcmToken = async (req, res) => {
     res.status(500).json({ message: error.message || "Internal server error" });
   }
 };
+
+export const deleteFcmToken = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { token } = req.query;
+
+    if (!token) {
+      return res.status(400).json({ message: "FCM token is required" });
+    }
+
+    await service.deleteFcmToken(userId, token);
+    res.status(200).json({ message: "FCM token deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting FCM token:", error);
+    res.status(500).json({ message: error.message || "Internal server error" });
+  }
+};
