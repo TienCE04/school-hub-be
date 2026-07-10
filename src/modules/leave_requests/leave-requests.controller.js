@@ -1,5 +1,4 @@
 import * as leaveRequestService from "./leave-requests.service.js";
-import { successResponse, errorResponse } from "../../shared/utils/response.js";
 
 export const createLeaveRequest = async (req, res) => {
   try {
@@ -14,9 +13,9 @@ export const createLeaveRequest = async (req, res) => {
       evidence
     });
     
-    return successResponse(res, 201, "Leave request created successfully", request);
+    return res.status(201).json(request);
   } catch (error) {
-    return errorResponse(res, 500, error.message);
+    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -24,9 +23,9 @@ export const getMyRequests = async (req, res) => {
   try {
     const studentId = req.user.id;
     const requests = await leaveRequestService.getStudentLeaveRequests(studentId);
-    return successResponse(res, 200, "Leave requests fetched successfully", requests);
+    return res.json(requests);
   } catch (error) {
-    return errorResponse(res, 500, error.message);
+    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -34,9 +33,9 @@ export const getClassRequests = async (req, res) => {
   try {
     const { classId } = req.params;
     const requests = await leaveRequestService.getClassLeaveRequests(classId);
-    return successResponse(res, 200, "Class leave requests fetched successfully", requests);
+    return res.json(requests);
   } catch (error) {
-    return errorResponse(res, 500, error.message);
+    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -46,9 +45,9 @@ export const updateStatus = async (req, res) => {
     const { status } = req.body;
     
     const updatedRequest = await leaveRequestService.updateLeaveRequestStatus(id, status);
-    return successResponse(res, 200, "Leave request status updated successfully", updatedRequest);
+    return res.json(updatedRequest);
   } catch (error) {
-    return errorResponse(res, 500, error.message);
+    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -56,9 +55,9 @@ export const getMyStatistics = async (req, res) => {
   try {
     const studentId = req.user.id;
     const stats = await leaveRequestService.getStudentStatistics(studentId);
-    return successResponse(res, 200, "Leave request statistics fetched successfully", stats);
+    return res.json(stats);
   } catch (error) {
-    return errorResponse(res, 500, error.message);
+    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -66,8 +65,8 @@ export const getClassStatistics = async (req, res) => {
   try {
     const { classId } = req.params;
     const stats = await leaveRequestService.getClassStatistics(classId);
-    return successResponse(res, 200, "Class leave request statistics fetched successfully", stats);
+    return res.json(stats);
   } catch (error) {
-    return errorResponse(res, 500, error.message);
+    return res.status(500).json({ message: error.message });
   }
 };
