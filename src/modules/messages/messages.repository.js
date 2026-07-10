@@ -135,12 +135,19 @@ export const countUnread = (conversationId, userId, lastReadAt) => {
   });
 };
 
-export const getMessagesByConversation = (conversationId, skip = 0, take = 50) => {
+export const getMessagesByConversation = (conversationId, limit = 30, after, before) => {
+  const whereClause = { conversationId };
+
+  if (after) {
+    whereClause.updatedAt = { gt: new Date(after) }; // Sync logic uses updatedAt
+  } else if (before) {
+    whereClause.createdAt = { lt: new Date(before) }; // Paging history uses createdAt
+  }
+
   return prisma.message.findMany({
-    where: { conversationId },
+    where: whereClause,
     orderBy: { createdAt: "desc" },
-    skip,
-    take,
+    take: limit,
     include: {
       sender: {
         select: { 
@@ -169,6 +176,71 @@ export const markConversationAsRead = (conversationId, userId) => {
     },
     data: {
       lastReadAt: new Date(),
+    },
+  });
+};
+
+export const getMessageById = (messageId) => {
+  return prisma.message.findUnique({
+    where: { id: messageId },
+    include: {
+      sender: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          studentCode: true,
+          avatar: true,
+          role: true,
+        },
+      },
+      attachments: true,
+    },
+  });
+};
+
+export const editMessage = (messageId, newContent) => {
+  return prisma.message.update({
+    where: { id: messageId },
+    data: {
+      content: newContent,
+      isEdited: true,
+    },
+    include: {
+      sender: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          studentCode: true,
+          avatar: true,
+          role: true,
+        },
+      },
+      attachments: true,
+    },
+  });
+};
+
+export const softDeleteMessage = (messageId) => {
+  return prisma.message.update({
+    where: { id: messageId },
+    data: {
+      isDeleted: true,
+      content: "", // Optionally clear content, or leave it and let frontend handle
+    },
+    include: {
+      sender: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          studentCode: true,
+          avatar: true,
+          role: true,
+        },
+      },
+      attachments: true,
     },
   });
 };

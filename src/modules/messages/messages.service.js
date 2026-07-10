@@ -297,7 +297,7 @@ export const sendMessage = async (senderId, data) => {
   return messageDto;
 };
 
-export const getConversationMessages = async (userId, conversationId, skip = 0, take = 50) => {
+export const getConversationMessages = async (userId, conversationId, limit = 30, after, before) => {
   // Check if user is a participant
   const participant = await prisma.participant.findUnique({
     where: {
@@ -312,7 +312,7 @@ export const getConversationMessages = async (userId, conversationId, skip = 0, 
     throw new Error("Forbidden");
   }
 
-  const messages = await repo.getMessagesByConversation(conversationId, skip, take);
+  const messages = await repo.getMessagesByConversation(conversationId, limit, after, before);
 
   // Format to match MessageDto
   return messages.map((msg) => ({
@@ -369,4 +369,84 @@ export const markAsRead = async (userId, conversationId) => {
   }
 
   return { success: true };
+};
+
+export const editMessage = async (userId, messageId, newContent) => {
+  const msg = await repo.getMessageById(Number(messageId));
+  if (!msg) throw new Error("Not found");
+  if (msg.senderId !== userId) throw new Error("Forbidden");
+
+  const updatedMsg = await repo.editMessage(Number(messageId), newContent);
+
+  // Send socket event
+  try {
+    const io = global.io;
+    const conv = await repo.getConversationById(msg.conversationId);
+    if (io && conv) {
+      const socketPayload = {
+        type: "chat",
+        event: "MessageEdited",
+        data: {
+          message: {
+            id: String(updatedMsg.id),
+            conversationId: String(updatedMsg.conversationId),
+            senderId: String(updatedMsg.senderId),
+            content: updatedMsg.content,
+            isEdited: updatedMsg.isEdited,
+            isDeleted: updatedMsg.isDeleted,
+            createdAt: updatedMsg.createdAt.getTime(),
+            updatedAt: updatedMsg.updatedAt.getTime(),
+          }
+        }
+      };
+
+      conv.participants.forEach(p => {
+        io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, socketPayload);
+      });
+    }
+  } catch (err) {
+    console.error("Socket error on editMessage:", err);
+  }
+
+  return updatedMsg;
+};
+
+export const deleteMessage = async (userId, messageId) => {
+  const msg = await repo.getMessageById(Number(messageId));
+  if (!msg) throw new Error("Not found");
+  if (msg.senderId !== userId) throw new Error("Forbidden");
+
+  const deletedMsg = await repo.softDeleteMessage(Number(messageId));
+
+  // Send socket event
+  try {
+    const io = global.io;
+    const conv = await repo.getConversationById(msg.conversationId);
+    if (io && conv) {
+      const socketPayload = {
+        type: "chat",
+        event: "MessageDeleted",
+        data: {
+          message: {
+            id: String(deletedMsg.id),
+            conversationId: String(deletedMsg.conversationId),
+            senderId: String(deletedMsg.senderId),
+            content: deletedMsg.content,
+            isEdited: deletedMsg.isEdited,
+            isDeleted: deletedMsg.isDeleted,
+            createdAt: deletedMsg.createdAt.getTime(),
+            updatedAt: deletedMsg.updatedAt.getTime(),
+          }
+        }
+      };
+
+      conv.participants.forEach(p => {
+        io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, socketPayload);
+      });
+    }
+  } catch (err) {
+    console.error("Socket error on deleteMessage:", err);
+  }
+
+  return deletedMsg;
 };

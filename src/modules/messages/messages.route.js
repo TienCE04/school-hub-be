@@ -11,5 +11,7 @@ router.get('/conversations/:id', authenticate, controller.getConversationById);
 router.get('/conversations/:id/messages', authenticate, controller.getMessages);
 router.put('/conversations/:id/read', authenticate, controller.markAsRead);
 router.post('/messages', authenticate, authorize(['TEACHER','STUDENT']), controller.postMessage);
+router.patch('/messages/:id', authenticate, controller.patchMessage);
+router.delete('/messages/:id', authenticate, controller.deleteMessage);
 
 export default router;

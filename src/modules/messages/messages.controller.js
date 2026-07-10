@@ -70,10 +70,11 @@ export const getMessages = async (req, res) => {
   try {
     const userId = req.user.id;
     const conversationId = parseInt(req.params.id);
-    const skip = parseInt(req.query.skip) || 0;
-    const take = parseInt(req.query.take) || 50;
+    const limit = parseInt(req.query.limit) || 30;
+    const after = req.query.after ? parseInt(req.query.after) : undefined;
+    const before = req.query.before ? parseInt(req.query.before) : undefined;
 
-    const messages = await service.getConversationMessages(userId, conversationId, skip, take);
+    const messages = await service.getConversationMessages(userId, conversationId, limit, after, before);
     res.json(messages);
   } catch (error) {
     console.error("Error fetching messages:", error);
@@ -97,5 +98,42 @@ export const markAsRead = async (req, res) => {
       return res.status(403).json({ error: "Forbidden" });
     }
     res.status(500).json({ error: "Failed to mark messages as read" });
+  }
+};
+
+export const patchMessage = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const messageId = parseInt(req.params.id);
+    const { content } = req.body;
+
+    if (!content) {
+      return res.status(400).json({ error: "Content is required" });
+    }
+
+    const result = await service.editMessage(userId, messageId, content);
+    res.json(result);
+  } catch (error) {
+    console.error("Error editing message:", error);
+    if (error.message === "Forbidden" || error.message === "Not found") {
+      return res.status(error.message === "Forbidden" ? 403 : 404).json({ error: error.message });
+    }
+    res.status(500).json({ error: "Failed to edit message" });
+  }
+};
+
+export const deleteMessage = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const messageId = parseInt(req.params.id);
+
+    const result = await service.deleteMessage(userId, messageId);
+    res.json(result);
+  } catch (error) {
+    console.error("Error deleting message:", error);
+    if (error.message === "Forbidden" || error.message === "Not found") {
+      return res.status(error.message === "Forbidden" ? 403 : 404).json({ error: error.message });
+    }
+    res.status(500).json({ error: "Failed to delete message" });
   }
 };
