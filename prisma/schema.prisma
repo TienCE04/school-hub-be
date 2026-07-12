@@ -1,0 +1,317 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             Int                @id @default(autoincrement())
+  name           String
+  email          String             @unique
+  studentCode    String?            @unique
+  password       String
+  avatar         String?
+  role           Role
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  joinRequests   ClassJoinRequest[]
+  classMembers   ClassMember[]
+  comments       Comment[]          @relation("UserComments")
+  deviceTokens   DeviceToken[]
+  driveFiles     DriveFile[]
+  messages       Message[]          @relation("UserMessages")
+  participants   Participant[]
+  posts          Post[]             @relation("UserPosts")
+  profile        Profile?
+  tokens         RefreshToken[]
+  subjectMembers SubjectMember[]
+  submissions    Submission[]       @relation("UserSubmissions")
+  leaveRequests  LeaveRequest[]     @relation("UserLeaveRequests")
+}
+
+model Class {
+  id           Int                @id @default(autoincrement())
+  name         String
+  description  String?
+  code         String             @unique
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  joinRequests ClassJoinRequest[]
+  members      ClassMember[]
+  driveFiles   DriveFile[]
+  posts        Post[]
+  subject      Subject?
+  leaveRequests LeaveRequest[]
+}
+
+model ClassMember {
+  id       Int      @id @default(autoincrement())
+  userId   Int
+  classId  Int
+  joinedAt DateTime @default(now())
+  class    Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, classId])
+}
+
+model ClassJoinRequest {
+  id        Int               @id @default(autoincrement())
+  userId    Int
+  classId   Int
+  status    JoinRequestStatus @default(PENDING)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  class     Class             @relation(fields: [classId], references: [id], onDelete: Cascade)
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, classId])
+}
+
+model Post {
+  id          Int          @id @default(autoincrement())
+  title       String
+  content     String
+  type        PostType
+  dueDate     DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  authorId    Int
+  classId     Int
+  attachments Attachment[]
+  comments    Comment[]
+  author      User         @relation("UserPosts", fields: [authorId], references: [id])
+  class       Class        @relation(fields: [classId], references: [id])
+  submissions Submission[]
+}
+
+model Comment {
+  id          Int          @id @default(autoincrement())
+  content     String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  postId      Int
+  authorId    Int
+  attachments Attachment[]
+  author      User         @relation("UserComments", fields: [authorId], references: [id])
+  post        Post         @relation(fields: [postId], references: [id])
+}
+
+model Submission {
+  id          Int              @id @default(autoincrement())
+  submittedAt DateTime?
+  grade       Float?
+  feedback    String?
+  status      SubmissionStatus @default(PENDING)
+  postId      Int
+  studentId   Int
+  attachments Attachment[]
+  post        Post             @relation(fields: [postId], references: [id])
+  student     User             @relation("UserSubmissions", fields: [studentId], references: [id])
+}
+
+model Attachment {
+  id           Int         @id @default(autoincrement())
+  name         String
+  url          String
+  mimeType     String
+  size         Int?
+  postId       Int?
+  commentId    Int?
+  submissionId Int?
+  messageId    Int?
+  comment      Comment?    @relation(fields: [commentId], references: [id])
+  message      Message?    @relation(fields: [messageId], references: [id])
+  post         Post?       @relation(fields: [postId], references: [id])
+  submission   Submission? @relation(fields: [submissionId], references: [id])
+}
+
+model Conversation {
+  id           Int              @id @default(autoincrement())
+  name         String?
+  avatar       String?
+  type         ConversationType @default(PRIVATE)
+  privateKey   String?          @unique
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  messages     Message[]
+  participants Participant[]
+
+  @@index([updatedAt])
+}
+
+model Participant {
+  id             Int          @id @default(autoincrement())
+  userId         Int
+  conversationId Int
+  lastReadAt     DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+
+  @@unique([userId, conversationId])
+  @@index([conversationId])
+}
+
+model Message {
+  id             Int          @id @default(autoincrement())
+  content        String
+  isEdited       Boolean      @default(false)
+  isDeleted      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt @default(now())
+  senderId       Int
+  conversationId Int
+  attachments    Attachment[]
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  sender         User         @relation("UserMessages", fields: [senderId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+}
+
+model Semester {
+  id           Int       @id @default(autoincrement())
+  semesterName String
+  startDate    DateTime
+  endDate      DateTime
+  totalWeeks   Int
+  weekRanges   Json
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  subjects     Subject[]
+}
+
+model Subject {
+  id          Int             @id @default(autoincrement())
+  title       String
+  subjectCode String
+  classCode   String
+  location    String
+  startTime   DateTime
+  endTime     DateTime
+  startDate   DateTime
+  classId     Int?            @unique
+  semesterId  Int
+  session     SessionType
+  class       Class?          @relation(fields: [classId], references: [id])
+  semester    Semester        @relation(fields: [semesterId], references: [id])
+  members     SubjectMember[]
+}
+
+model SubjectMember {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  subjectId Int
+  joinedAt  DateTime @default(now())
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, subjectId])
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  userId    Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model DriveFile {
+  id        Int      @id @default(autoincrement())
+  name      String
+  url       String
+  mimeType  String
+  size      Float
+  isShared  Boolean  @default(false)
+  ownerId   Int
+  classId   Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  class     Class?   @relation(fields: [classId], references: [id])
+  owner     User     @relation(fields: [ownerId], references: [id])
+}
+
+model Profile {
+  id            Int     @id @default(autoincrement())
+  phone         String?
+  birthDate     String?
+  story         String?
+  emailPersonal String?
+  nameSchool    String?
+  nameClass     String?
+  major         String?
+  department    String?
+  title         String?
+  userId        Int     @unique
+  user          User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model DeviceToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  userId    Int
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+enum PostType {
+  ANNOUNCEMENT
+  ASSIGNMENT
+}
+
+enum SubmissionStatus {
+  PENDING
+  SUBMITTED
+  LATE
+  GRADED
+}
+
+enum JoinRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ConversationType {
+  PRIVATE
+  GROUP
+}
+
+enum SessionType {
+  MORNING
+  AFTERNOON
+  EVENING
+}
+
+model LeaveRequest {
+  id        Int                @id @default(autoincrement())
+  studentId Int
+  classId   Int
+  date      DateTime
+  reason    String
+  evidence  String?
+  status    LeaveRequestStatus @default(PENDING)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  student   User               @relation("UserLeaveRequests", fields: [studentId], references: [id], onDelete: Cascade)
+  class     Class              @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@index([classId])
+}
+
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
