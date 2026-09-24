@@ -4,12 +4,17 @@ export const createAssignmentDto = (data) => {
     throw new Error("Missing title, content, classCode or dueDate");
   }
 
+  const parsedDueDate = new Date(dueDate);
+  if (Number.isNaN(parsedDueDate.getTime())) {
+    throw new Error("Invalid dueDate");
+  }
+
   return {
     title,
     content,
     type: "ASSIGNMENT",
     classCode: String(classCode),
-    dueDate: new Date(dueDate),
+    dueDate: parsedDueDate,
     attachments: attachments || [],
   };
 };
@@ -25,11 +30,12 @@ export const submitAssignmentDto = (data) => {
 };
 
 export const gradeSubmissionDto = (data) => {
-  if (data.grade === undefined || data.grade < 0 || data.grade > 10) {
+  const grade = Number(data.grade);
+  if (!Number.isFinite(grade) || grade < 0 || grade > 10) {
     throw new Error("Invalid grade (must be 0-10)");
   }
   return {
-    grade: parseFloat(data.grade),
+    grade,
     feedback: data.feedback || "",
   };
 };

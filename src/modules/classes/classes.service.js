@@ -2,11 +2,36 @@ import * as repo from "./classes.repository.js";
 import prisma from "../../config/prisma.js";
 import { getIO } from "../../realtime/gateway/index.js";
 import { SOCKET_EVENTS } from "../../realtime/events/index.js";
+import { createSocketPayload } from "../../realtime/events/payload.js";
 import { sendPushNotification, sendPushNotificationToUsers } from "../../shared/utils/fcm.js";
 
-export const getClassDetails = async (classCode) => {
+const getClassMember = (userId, classId) => prisma.classMember.findUnique({
+  where: { userId_classId: { userId, classId } },
+  include: { user: true },
+});
+
+const assertClassMember = async (user, classId) => {
+  if (user.role === "ADMIN") return null;
+
+  const member = await getClassMember(user.id, classId);
+  if (!member) throw new Error("You are not a member of this class");
+  return member;
+};
+
+const assertClassTeacher = async (user, classId) => {
+  if (user.role === "ADMIN") return null;
+
+  const member = await getClassMember(user.id, classId);
+  if (!member || member.user.role !== "TEACHER") {
+    throw new Error("Only a class teacher or admin can perform this action");
+  }
+  return member;
+};
+
+export const getClassDetails = async (classCode, user) => {
   const classObj = await repo.findClassByCode(classCode);
   if (!classObj) throw new Error("Class not found");
+  await assertClassMember(user, classObj.id);
   const classData = await repo.findClassWithPosts(classObj.id);
   if (!classData) throw new Error("Class details not found");
 
@@ -66,12 +91,16 @@ export const getPostById = async (postId, userId) => {
 export const createPost = async (data, user) => {
   const classExists = await repo.findClassByCode(data.classCode);
   if (!classExists) throw new Error("Class not found");
+  await assertClassMember(user, classExists.id);
+  if (!["ANNOUNCEMENT", "ASSIGNMENT"].includes(data.type)) {
+    throw new Error("Invalid post type");
+  }
   if (data.type === "ASSIGNMENT" && !data.dueDate) {
     throw new Error("Due date is required for assignments");
   }
 
-  if (data.type === "ASSIGNMENT" && user.role !== "TEACHER") {
-    throw new Error("Only teacher can create assignment");
+  if (data.type === "ASSIGNMENT" && !["TEACHER", "ADMIN"].includes(user.role)) {
+    throw new Error("Only a teacher or admin can create an assignment");
   }
 
   const postData = { ...data, classId: classExists.id };
@@ -81,16 +110,18 @@ export const createPost = async (data, user) => {
 
   try {
     const io = getIO();
-    const payload = {
-      type: "post",
-      data: {
-        postId: post.id.toString(),
+    const isAssignment = post.type === "ASSIGNMENT";
+    const eventName = isAssignment ? SOCKET_EVENTS.ASSIGNMENT_CREATED : SOCKET_EVENTS.POST_CREATED;
+    const payload = createSocketPayload(isAssignment ? "assignment" : "post", eventName, {
+        postId: isAssignment ? undefined : post.id.toString(),
+        assignmentId: isAssignment ? post.id.toString() : undefined,
+        classId: classExists.id.toString(),
         classCode: classExists.code,
-        type: "NEW_POST"
-      }
-    };
-    
-    io.to(`class:${data.classId}`).emit(SOCKET_EVENTS.POST_CREATED, payload);
+        action: "created",
+        type: isAssignment ? "NEW_ASSIGNMENT" : "NEW_POST"
+    });
+
+    io.to(`class:${classExists.id}`).emit(eventName, payload);
 
     // Send FCM to all members
     const members = await prisma.classMember.findMany({ where: { classId: classExists.id } });
@@ -108,24 +139,54 @@ export const createPost = async (data, user) => {
 export const updatePost = async (postId, data, user) => {
   const post = await repo.findPostById(postId);
   if (!post) throw new Error("Post not found");
-  
+  await assertClassMember(user, post.classId);
+
   if (post.authorId !== user.id && user.role !== "ADMIN") {
     throw new Error("Permission denied to update this post");
   }
 
-  const updatedPost = await repo.updatePost(postId, data);
+  const updateData = {};
+  if (data.title !== undefined) {
+    if (!data.title?.trim()) throw new Error("Title is required");
+    updateData.title = data.title.trim();
+  }
+  if (data.content !== undefined) {
+    if (!data.content?.trim()) throw new Error("Content is required");
+    updateData.content = data.content.trim();
+  }
+  if (data.type !== undefined) {
+    if (!["ANNOUNCEMENT", "ASSIGNMENT"].includes(data.type)) {
+      throw new Error("Invalid post type");
+    }
+    if (data.type !== post.type) {
+      throw new Error("Post type cannot be changed");
+    }
+    updateData.type = data.type;
+  }
+  if (data.dueDate !== undefined) {
+    const parsedDueDate = data.dueDate ? new Date(data.dueDate) : null;
+    if (parsedDueDate && Number.isNaN(parsedDueDate.getTime())) {
+      throw new Error("Invalid dueDate");
+    }
+    updateData.dueDate = parsedDueDate;
+  }
+  if (post.type === "ASSIGNMENT" && !["TEACHER", "ADMIN"].includes(user.role)) {
+    throw new Error("Only a teacher or admin can update an assignment");
+  }
+
+  const updatedPost = await repo.updatePost(postId, updateData);
 
   try {
     const io = getIO();
-    const payload = {
-      type: post.type === "ASSIGNMENT" ? "assignment" : "post",
-      data: {
-        id: updatedPost.id.toString(),
-        classCode: updatedPost.class.code,
-        type: post.type === "ASSIGNMENT" ? "ASSIGNMENT_UPDATED" : "POST_UPDATED"
-      }
-    };
     const eventName = post.type === "ASSIGNMENT" ? SOCKET_EVENTS.ASSIGNMENT_UPDATED : SOCKET_EVENTS.POST_UPDATED;
+    const payload = createSocketPayload(post.type === "ASSIGNMENT" ? "assignment" : "post", eventName, {
+        postId: updatedPost.id.toString(),
+        assignmentId: post.type === "ASSIGNMENT" ? updatedPost.id.toString() : undefined,
+        classId: updatedPost.classId.toString(),
+        classCode: updatedPost.class.code,
+        action: "updated",
+        type: post.type === "ASSIGNMENT" ? "UPDATE_ASSIGNMENT" : "UPDATE_POST"
+    });
     io.to(`class:${updatedPost.classId}`).emit(eventName, payload);
     // Not sending FCM for updates unless requested, typically updates are silent
   } catch (err) {
@@ -138,8 +199,9 @@ export const updatePost = async (postId, data, user) => {
 export const deletePost = async (postId, user) => {
   const post = await repo.findPostById(postId);
   if (!post) throw new Error("Post not found");
-  
-  if (post.authorId !== user.id && user.role !== "ADMIN" && user.role !== "TEACHER") {
+  await assertClassMember(user, post.classId);
+
+  if (post.authorId !== user.id && user.role !== "ADMIN") {
     throw new Error("Permission denied to delete this post");
   }
 
@@ -147,15 +209,15 @@ export const deletePost = async (postId, user) => {
 
   try {
     const io = getIO();
-    const payload = {
-      type: post.type === "ASSIGNMENT" ? "assignment" : "post",
-      data: {
-        id: postId.toString(),
-        classCode: post.class.code,
-        type: post.type === "ASSIGNMENT" ? "ASSIGNMENT_DELETED" : "POST_DELETED"
-      }
-    };
     const eventName = post.type === "ASSIGNMENT" ? SOCKET_EVENTS.ASSIGNMENT_DELETED : SOCKET_EVENTS.POST_DELETED;
+    const payload = createSocketPayload(post.type === "ASSIGNMENT" ? "assignment" : "post", eventName, {
+        postId: postId.toString(),
+        assignmentId: post.type === "ASSIGNMENT" ? postId.toString() : undefined,
+        classId: post.classId.toString(),
+        classCode: post.class.code,
+        action: "deleted",
+        type: post.type === "ASSIGNMENT" ? "DELETE_ASSIGNMENT" : "DELETE_POST"
+    });
     io.to(`class:${post.classId}`).emit(eventName, payload);
   } catch (err) {
     console.error("Socket error on deletePost:", err);
@@ -175,15 +237,13 @@ export const createComment = async (postId, user, content, attachments) => {
 
   try {
     const io = getIO();
-    const payload = {
-      type: "post",
-      data: {
+    const payload = createSocketPayload("comment", SOCKET_EVENTS.COMMENT_ADDED, {
         commentId: comment.id.toString(),
         postId: postId.toString(),
+        classId: post.classId.toString(),
         classCode: comment.post.class.code,
-        type: "COMMENT_ADDED"
-      }
-    };
+        action: "created",
+    });
     io.to(`class:${post.classId}`).emit(SOCKET_EVENTS.COMMENT_ADDED, payload);
   } catch (err) {
     console.error("Socket error on createComment:", err);
@@ -195,8 +255,9 @@ export const createComment = async (postId, user, content, attachments) => {
 export const deleteComment = async (commentId, user) => {
   const comment = await repo.findCommentById(commentId);
   if (!comment) throw new Error("Comment not found");
+  await assertClassMember(user, comment.post.classId);
 
-  if (comment.authorId !== user.id && user.role !== "ADMIN" && user.role !== "TEACHER") {
+  if (comment.authorId !== user.id && user.role !== "ADMIN") {
     throw new Error("Permission denied to delete this comment");
   }
 
@@ -204,15 +265,13 @@ export const deleteComment = async (commentId, user) => {
 
   try {
     const io = getIO();
-    const payload = {
-      type: "post",
-      data: {
+    const payload = createSocketPayload("comment", SOCKET_EVENTS.COMMENT_DELETED, {
         commentId: commentId.toString(),
         postId: comment.postId.toString(),
+        classId: comment.post.classId.toString(),
         classCode: comment.post.class.code,
-        type: "COMMENT_DELETED"
-      }
-    };
+        action: "deleted",
+    });
     io.to(`class:${comment.post.classId}`).emit(SOCKET_EVENTS.COMMENT_DELETED, payload);
   } catch (err) {
     console.error("Socket error on deleteComment:", err);
@@ -221,17 +280,21 @@ export const deleteComment = async (commentId, user) => {
   return { message: "Comment deleted successfully" };
 };
 
-export const getAssignmentStats = async (postId, classCode) => {
+export const getAssignmentStats = async (postId, classCode, user) => {
   const classObj = await repo.findClassByCode(classCode);
   if (!classObj) throw new Error("Class not found");
   const classId = classObj.id;
+  await assertClassTeacher(user, classId);
+
+  const post = await prisma.post.findFirst({ where: { id: postId, classId, type: "ASSIGNMENT" } });
+  if (!post) throw new Error("Assignment not found in this class");
 
   const [totalStudents, submittedCount, lateCount] = await Promise.all([
-    prisma.user.count({
-      where: { role: "STUDENT", classId },
+    prisma.classMember.count({
+      where: { classId, user: { role: "STUDENT" } },
     }),
     prisma.submission.count({
-      where: { postId, status: "SUBMITTED" },
+      where: { postId, status: { in: ["SUBMITTED", "LATE", "GRADED"] } },
     }),
     prisma.submission.count({
       where: { postId, status: "LATE" },
@@ -241,14 +304,15 @@ export const getAssignmentStats = async (postId, classCode) => {
   return {
     totalStudents,
     submittedCount,
-    notSubmittedCount: totalStudents - submittedCount - lateCount,
+    notSubmittedCount: Math.max(0, totalStudents - submittedCount),
     lateCount,
   };
 };
 
-export const getAssignments = async (classCode, page, limit) => {
+export const getAssignments = async (classCode, page, limit, user) => {
   const classExists = await repo.findClassByCode(classCode);
   if (!classExists) throw new Error("Class not found");
+  await assertClassMember(user, classExists.id);
 
   return repo.findAssignmentsByClass(classExists.id, page, limit);
 };
@@ -328,9 +392,10 @@ const generateUniqueClassCode = async () => {
   return code;
 };
 
-export const getClassMembers = async (classCode) => {
+export const getClassMembers = async (classCode, user) => {
   const classExists = await repo.findClassByCode(classCode);
   if (!classExists) throw new Error("Class not found");
+  await assertClassMember(user, classExists.id);
 
   const members = await repo.findClassMembers(classExists.id);
 
@@ -376,10 +441,11 @@ export const joinClassByCode = async (userId, code) => {
 
   try {
     const io = getIO();
-    io.to(`class:${classToJoin.id}`).emit(SOCKET_EVENTS.CLASS_JOIN_REQUESTED, {
+    io.to(`class:${classToJoin.id}`).emit(SOCKET_EVENTS.CLASS_JOIN_REQUESTED, createSocketPayload("class", SOCKET_EVENTS.CLASS_JOIN_REQUESTED, {
       classId: classToJoin.id,
       userId,
-    });
+      action: "requested",
+    }));
   } catch (err) {
     console.error("Socket error on joinClassByCode:", err);
   }
@@ -390,22 +456,20 @@ export const joinClassByCode = async (userId, code) => {
   };
 };
 
-export const getJoinRequests = async (teacherId, classCode) => {
+export const getJoinRequests = async (user, classCode) => {
   const classObj = await repo.findClassByCode(classCode);
   if (!classObj) throw new Error("Class not found");
 
-  const isTeacherMember = await repo.checkClassMembership(teacherId, classObj.id);
-  if (!isTeacherMember) throw new Error("You do not have permission to view requests");
+  await assertClassTeacher(user, classObj.id);
 
   return await repo.findJoinRequestsByClass(classObj.id);
 };
 
-export const handleJoinRequest = async (teacherId, classCode, requestId, status) => {
+export const handleJoinRequest = async (user, classCode, requestId, status) => {
   const classObj = await repo.findClassByCode(classCode);
   if (!classObj) throw new Error("Class not found");
 
-  const isTeacherMember = await repo.checkClassMembership(teacherId, classObj.id);
-  if (!isTeacherMember) throw new Error("You do not have permission to handle requests");
+  await assertClassTeacher(user, classObj.id);
 
   const joinReq = await repo.findJoinRequestById(requestId);
   if (!joinReq || joinReq.classId !== classObj.id) {
@@ -426,16 +490,18 @@ export const handleJoinRequest = async (teacherId, classCode, requestId, status)
     const isMember = await repo.checkClassMembership(joinReq.userId, classObj.id);
     if (!isMember) {
       await repo.addClassMember(joinReq.userId, classObj.id);
-      
+
       try {
         const io = getIO();
-        io.to(`class:${classObj.id}`).emit(SOCKET_EVENTS.MEMBER_ADDED, {
+        io.to(`class:${classObj.id}`).emit(SOCKET_EVENTS.MEMBER_ADDED, createSocketPayload("class", SOCKET_EVENTS.MEMBER_ADDED, {
           classId: classObj.id,
           userId: joinReq.userId,
-        });
-        io.to(`user:${joinReq.userId}`).emit(SOCKET_EVENTS.CLASS_JOIN_APPROVED, {
+          action: "member_added",
+        }));
+        io.to(`user:${joinReq.userId}`).emit(SOCKET_EVENTS.CLASS_JOIN_APPROVED, createSocketPayload("class", SOCKET_EVENTS.CLASS_JOIN_APPROVED, {
           classId: classObj.id,
-        });
+          action: "approved",
+        }));
       } catch (err) {
         console.error("Socket error on member added:", err);
       }
@@ -443,9 +509,10 @@ export const handleJoinRequest = async (teacherId, classCode, requestId, status)
   } else if (status === "REJECTED") {
     try {
       const io = getIO();
-      io.to(`user:${joinReq.userId}`).emit(SOCKET_EVENTS.CLASS_JOIN_REJECTED, {
+      io.to(`user:${joinReq.userId}`).emit(SOCKET_EVENTS.CLASS_JOIN_REJECTED, createSocketPayload("class", SOCKET_EVENTS.CLASS_JOIN_REJECTED, {
         classId: classObj.id,
-      });
+        action: "rejected",
+      }));
     } catch (err) {
       console.error("Socket error on request rejected:", err);
     }

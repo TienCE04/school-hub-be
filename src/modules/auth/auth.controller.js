@@ -31,7 +31,8 @@ export const createUser = async (req, res) => {
   try {
     const data = registerDto(req.body);
     const result = await service.createUser(data);
-    res.json(result);
+    const { password: _password, ...safeUser } = result;
+    res.status(201).json(safeUser);
   } catch (e) {
     res.status(400).json({ message: e.message });
   }
@@ -50,10 +51,15 @@ export const changePassword = async (req, res) => {
 };
 
 export const logout = async (req, res) => {
-  const token = req.body.refreshToken;
-  const hashed = hashToken(token);
+  try {
+    const token = req.body?.refreshToken;
+    if (!token) return res.status(400).json({ message: "Refresh token is required" });
 
-  await repo.deleteRefreshToken(hashed);
+    const hashed = hashToken(token);
+    await repo.deleteRefreshToken(hashed);
 
-  res.json({ message: "Logged out" });
+    res.json({ message: "Logged out" });
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
 };

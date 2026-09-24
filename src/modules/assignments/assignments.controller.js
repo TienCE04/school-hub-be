@@ -1,4 +1,3 @@
-import { parse } from "dotenv";
 import * as service from "./assignments.service.js";
 import {
   createAssignmentDto,
@@ -16,14 +15,28 @@ export const createAssignment = async (req, res) => {
   }
 };
 
-export const getAssignmentDetail = async (req, res) => {
+export const getStudentAssignmentDetail = async (req, res) => {
   try {
     const postId = parseInt(req.params.id);
 
     if (isNaN(postId)) {
       return res.status(400).json({ error: "Invalid post ID" });
     }
-    const result = await service.getAssignmentDetail(req.user.id, postId);
+    const result = await service.getStudentAssignmentDetail(req.user.id, postId);
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+};
+
+export const getTeacherAssignmentDetail = async (req, res) => {
+  try {
+    const postId = parseInt(req.params.id);
+
+    if (isNaN(postId)) {
+      return res.status(400).json({ error: "Invalid post ID" });
+    }
+    const result = await service.getTeacherAssignmentDetail(req.user.id, postId);
     return res.status(200).json(result);
   } catch (error) {
     return res.status(400).json({ error: error.message });

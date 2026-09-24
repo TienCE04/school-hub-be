@@ -10,7 +10,7 @@ const mapPayloadToAndroidData = async (payload) => {
     createdAt: Date.now().toString()
   };
 
-  if (payload.type === 'chat' && payload.event === 'new_message' && payload.data) {
+  if (payload.type === 'chat' && ['new_message', 'message_received'].includes(payload.event) && payload.data) {
     data.type = "Message";
     data.title = payload.data.sender?.name || "New Message";
     data.content = payload.data.content || "You received a new message";

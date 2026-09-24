@@ -110,6 +110,8 @@ model Submission {
   attachments Attachment[]
   post        Post             @relation(fields: [postId], references: [id])
   student     User             @relation("UserSubmissions", fields: [studentId], references: [id])
+
+  @@unique([studentId, postId])
 }
 
 model Attachment {

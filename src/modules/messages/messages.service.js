@@ -2,7 +2,16 @@ import * as repo from "./messages.repository.js";
 import prisma from "../../config/prisma.js";
 import { getIO } from "../../realtime/gateway/index.js";
 import { SOCKET_EVENTS } from "../../realtime/events/index.js";
+import { createSocketPayload } from "../../realtime/events/payload.js";
 import { sendPushNotification } from "../../shared/utils/fcm.js";
+
+const toMessageSocketDto = (message) => ({
+  ...message,
+  createdAt: message.createdAt.getTime(),
+  updatedAt: message.updatedAt ? message.updatedAt.getTime() : undefined,
+  isRead: true,
+  status: "SENT",
+});
 
 export const getUserConversations = async (userId, skip = 0, take = 30) => {
   const list = await repo.getConversationsByUser(userId, skip, take);
@@ -143,11 +152,7 @@ export const getOrCreatePrivateConversation = async (userId, receiverId) => {
         type: existing.type,
         participants: [userId, receiverId]
       };
-      const socketPayload = {
-        type: "chat",
-        event: "conversation_created",
-        data: convData
-      };
+      const socketPayload = createSocketPayload("chat", "conversation_created", convData);
       io.to(`user:${userId}`).emit(SOCKET_EVENTS.CONVERSATION_CREATED, socketPayload);
       io.to(`user:${receiverId}`).emit(SOCKET_EVENTS.CONVERSATION_CREATED, socketPayload);
     } catch (err) {
@@ -185,11 +190,7 @@ export const sendMessage = async (senderId, data) => {
           type: existing.type,
           participants: [senderId, data.receiverId]
         };
-        const socketPayload = {
-          type: "chat",
-          event: "conversation_created",
-          data: convData
-        };
+        const socketPayload = createSocketPayload("chat", "conversation_created", convData);
         io.to(`user:${senderId}`).emit(SOCKET_EVENTS.CONVERSATION_CREATED, socketPayload);
         io.to(`user:${data.receiverId}`).emit(SOCKET_EVENTS.CONVERSATION_CREATED, socketPayload);
       } catch (err) {
@@ -262,26 +263,23 @@ export const sendMessage = async (senderId, data) => {
     const io = getIO();
 
     // Format message to match REST API
-    const messageDto = {
-      ...message,
-      createdAt: message.createdAt.getTime(),
-      updatedAt: message.updatedAt ? message.updatedAt.getTime() : undefined,
-      isRead: true,
-      status: "SENT"
-    };
+    const messageDto = toMessageSocketDto(message);
 
     allParticipants.forEach(p => {
-      const socketPayload = {
-        type: "chat",
-        event: "new_message",
-        data: messageDto
-      };
+      const transportEvent = p.userId === senderId
+        ? SOCKET_EVENTS.MESSAGE_SENT
+        : SOCKET_EVENTS.MESSAGE_RECEIVED;
+      const socketPayload = createSocketPayload(
+        "chat",
+        transportEvent,
+        messageDto,
+      );
 
       // Check if user is connected
       const room = io.sockets.adapter.rooms.get(`user:${p.userId}`);
       if (room && room.size > 0) {
         // User is connected, emit socket event
-        io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, socketPayload);
+        io.to(`user:${p.userId}`).emit(transportEvent, socketPayload);
       }
 
       // Always send push notification so the app can save it to local DB.
@@ -348,20 +346,16 @@ export const markAsRead = async (userId, conversationId) => {
       where: { conversationId }
     });
 
-    const socketPayload = {
-      type: "chat",
-      event: "status",
-      data: {
+    const socketPayload = createSocketPayload("chat", "message_status_updated", {
         messageId: null, // indicating the whole conversation or last state
         status: "SEEN"
-      }
-    };
+    });
 
     allParticipants.forEach(p => {
       // Don't send to the one who just read (or you can if you want their UI to sync)
       const room = io.sockets.adapter.rooms.get(`user:${p.userId}`);
       if (room && room.size > 0) {
-        io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, socketPayload);
+        io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_STATUS_UPDATED, socketPayload);
       }
     });
   } catch (err) {
@@ -380,28 +374,13 @@ export const editMessage = async (userId, messageId, newContent) => {
 
   // Send socket event
   try {
-    const io = global.io;
+    const io = getIO();
     const conv = await repo.getConversationById(msg.conversationId);
     if (io && conv) {
-      const socketPayload = {
-        type: "chat",
-        event: "MessageEdited",
-        data: {
-          message: {
-            id: String(updatedMsg.id),
-            conversationId: String(updatedMsg.conversationId),
-            senderId: String(updatedMsg.senderId),
-            content: updatedMsg.content,
-            isEdited: updatedMsg.isEdited,
-            isDeleted: updatedMsg.isDeleted,
-            createdAt: updatedMsg.createdAt.getTime(),
-            updatedAt: updatedMsg.updatedAt.getTime(),
-          }
-        }
-      };
+      const socketPayload = createSocketPayload("chat", "message_edited", toMessageSocketDto(updatedMsg));
 
       conv.participants.forEach(p => {
-        io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, socketPayload);
+        io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_EDITED, socketPayload);
       });
     }
   } catch (err) {
@@ -420,28 +399,13 @@ export const deleteMessage = async (userId, messageId) => {
 
   // Send socket event
   try {
-    const io = global.io;
+    const io = getIO();
     const conv = await repo.getConversationById(msg.conversationId);
     if (io && conv) {
-      const socketPayload = {
-        type: "chat",
-        event: "MessageDeleted",
-        data: {
-          message: {
-            id: String(deletedMsg.id),
-            conversationId: String(deletedMsg.conversationId),
-            senderId: String(deletedMsg.senderId),
-            content: deletedMsg.content,
-            isEdited: deletedMsg.isEdited,
-            isDeleted: deletedMsg.isDeleted,
-            createdAt: deletedMsg.createdAt.getTime(),
-            updatedAt: deletedMsg.updatedAt.getTime(),
-          }
-        }
-      };
+      const socketPayload = createSocketPayload("chat", "message_deleted", toMessageSocketDto(deletedMsg));
 
       conv.participants.forEach(p => {
-        io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, socketPayload);
+        io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_DELETED, socketPayload);
       });
     }
   } catch (err) {

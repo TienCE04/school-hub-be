@@ -1,5 +1,14 @@
 import prisma from "../../config/prisma.js";
 
+const publicUserSelect = {
+  id: true,
+  name: true,
+  email: true,
+  studentCode: true,
+  avatar: true,
+  role: true,
+};
+
 export const findClassWithPosts = (classId) => {
   return prisma.class.findUnique({
     where: { id: classId },
@@ -8,9 +17,9 @@ export const findClassWithPosts = (classId) => {
         orderBy: { createdAt: 'desc' },
         take: 20,
         include: {
-          author: true,
+          author: { select: publicUserSelect },
           attachments: true,
-          comments: { include: { author: true, attachments: true } },
+          comments: { include: { author: { select: publicUserSelect }, attachments: true } },
           class: true,
         },
       },
@@ -38,7 +47,7 @@ export const createPost = (authorId, data) => {
         }))
       } : undefined
     },
-    include: { author: true, attachments: true, class: true },
+    include: { author: { select: publicUserSelect }, attachments: true, class: true },
   });
 };
 
@@ -47,7 +56,7 @@ export const updatePost = (postId, data) => {
   return prisma.post.update({
     where: { id: postId },
     data: postData,
-    include: { author: true, attachments: true, class: true },
+    include: { author: { select: publicUserSelect }, attachments: true, class: true },
   });
 };
 
@@ -67,10 +76,10 @@ export const findPostById = (postId) => {
   return prisma.post.findUnique({
     where: { id: postId },
     include: {
-      author: true,
+      author: { select: publicUserSelect },
       attachments: true,
       class: true,
-      comments: { include: { author: true, attachments: true } },
+      comments: { include: { author: { select: publicUserSelect }, attachments: true } },
     },
   });
 };
@@ -83,7 +92,7 @@ export const findPostsByClass = async (classId, page = 1, limit = 10) => {
       take: limit,
       orderBy: { createdAt: "desc" },
       include: {
-        author: true,
+        author: { select: publicUserSelect },
         attachments: true,
       },
     }),
@@ -113,7 +122,7 @@ export const findAssignmentsByClass = async (classId, page = 1, limit = 10) => {
       take: limit,
       orderBy: { createdAt: "desc" },
       include: {
-        author: true,
+        author: { select: publicUserSelect },
         attachments: true,
       },
     }),
@@ -146,14 +155,14 @@ export const createComment = (authorId, postId, content, attachments) => {
         }))
       } : undefined
     },
-    include: { author: true, attachments: true, post: { include: { class: true } } },
+    include: { author: { select: publicUserSelect }, attachments: true, post: { include: { class: true } } },
   });
 };
 
 export const findCommentById = (commentId) => {
   return prisma.comment.findUnique({
     where: { id: commentId },
-    include: { post: { include: { class: true } }, author: true }
+    include: { post: { include: { class: true } }, author: { select: publicUserSelect } }
   });
 };
 
@@ -199,6 +208,7 @@ export const findClassMembers = (classId) => {
           id: true,
           name: true,
           email: true,
+          studentCode: true,
           avatar: true,
           role: true,
         },
