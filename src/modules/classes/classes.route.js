@@ -5,9 +5,17 @@ import express from 'express';
 
 const router = express.Router();
 
+router.get('/admin/all', authenticate, authorize(['ADMIN']), controller.getAllClasses);
+router.get('/:id/members/manage', authenticate, authorize(['ADMIN']), controller.getAdminClassMembers);
+router.get('/:id/members/candidates', authenticate, authorize(['ADMIN']), controller.getAvailableClassStudents);
+router.put('/:id', authenticate, authorize(['TEACHER', 'ADMIN']), controller.updateClass);
+router.delete('/:id', authenticate, authorize(['ADMIN']), controller.deleteClass);
+router.post('/:id/members/manage', authenticate, authorize(['ADMIN']), controller.manageClassMembers);
+
 router.get('/', authenticate, controller.getMyClasses);
 router.post('/join', authenticate, controller.joinClass);
 router.get('/:classCode', authenticate, controller.getClassByCode);
+router.get('/:classCode/members/page', authenticate, controller.getClassRosterPage);
 router.get('/:classCode/members', authenticate, controller.getClassMembers);
 router.get('/:classCode/join-requests', authenticate, authorize(['TEACHER', 'ADMIN']), controller.getJoinRequests);
 router.post('/:classCode/join-requests/:requestId/handle', authenticate, authorize(['TEACHER', 'ADMIN']), controller.handleJoinRequest);

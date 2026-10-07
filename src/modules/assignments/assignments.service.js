@@ -3,13 +3,96 @@ import prisma from "../../config/prisma.js";
 import { getIO } from "../../realtime/gateway/index.js";
 import { SOCKET_EVENTS } from "../../realtime/events/index.js";
 import { createSocketPayload } from "../../realtime/events/payload.js";
-import { sendPushNotification, sendPushNotificationToUsers } from "../../shared/utils/fcm.js";
+import { sendPushNotificationToUsers } from "../../shared/utils/fcm.js";
+import { SOCKET_PAYLOAD_TYPES, NOTIFICATION_CATEGORIES } from "../../shared/constants/notification.constants.js";
+import {
+  ASSIGNMENT_ACTIONS,
+  ASSIGNMENT_NOTIFICATION_KINDS,
+  ASSIGNMENT_NOTIFICATION_MESSAGES,
+} from "./assignments.constants.js";
 import {
   toPublicUserDto,
   toStudentAssignmentDetailDto,
   toSubmissionDto,
   toTeacherAssignmentDetailDto,
 } from "./dto/assignment-response.dto.js";
+
+const SOCKET_ROOM_PREFIXES = Object.freeze({
+  USER: "user:",
+  CLASS: "class:",
+});
+
+const getRoomName = (prefix, id) => `${prefix}${id}`;
+
+const isUserSocketConnected = (io, userId) => {
+  const room = io.sockets.adapter.rooms.get(
+    getRoomName(SOCKET_ROOM_PREFIXES.USER, userId),
+  );
+
+  return Boolean(room?.size);
+};
+
+const notifyUsersWithFallback = async ({ io, userIds, senderId, payload }) => {
+  const recipientIds = [...new Set(userIds.map(Number))].filter(
+    (userId) => userId !== Number(senderId),
+  );
+  const connectedUserIds = [];
+  const offlineUserIds = [];
+
+  recipientIds.forEach((userId) => {
+    if (isUserSocketConnected(io, userId)) {
+      connectedUserIds.push(userId);
+    } else {
+      offlineUserIds.push(userId);
+    }
+  });
+
+  connectedUserIds.forEach((userId) => {
+    io.to(getRoomName(SOCKET_ROOM_PREFIXES.USER, userId)).emit(
+      SOCKET_EVENTS.NOTIFICATION_RECEIVED,
+      payload,
+    );
+  });
+
+  if (offlineUserIds.length > 0) {
+    await sendPushNotificationToUsers(offlineUserIds, payload);
+  }
+
+  return connectedUserIds;
+};
+
+const buildNotificationPayload = ({
+  id,
+  kind,
+  title,
+  content,
+  assignmentId,
+  submissionId,
+  classId,
+  classCode,
+  grade,
+}) => createSocketPayload(
+  SOCKET_PAYLOAD_TYPES.NOTIFICATION,
+  SOCKET_EVENTS.NOTIFICATION_RECEIVED,
+  {
+    id,
+    title,
+    content,
+    notificationType: NOTIFICATION_CATEGORIES.ASSIGNMENT,
+    notificationKind: kind,
+    assignmentId: assignmentId?.toString(),
+    submissionId: submissionId?.toString(),
+    classId: classId?.toString(),
+    classCode,
+    grade,
+  },
+);
+
+const emitSubmissionEventToConnectedUsers = (io, userIds, event, payload) => {
+  userIds.forEach((userId) => {
+    io.to(getRoomName(SOCKET_ROOM_PREFIXES.USER, userId)).emit(event, payload);
+  });
+};
 
 /**
  * CREATE ASSIGNMENT
@@ -44,22 +127,40 @@ export const createAssignment = async (authorId, data) => {
 
   try {
     const io = getIO();
-    const payload = createSocketPayload("assignment", SOCKET_EVENTS.ASSIGNMENT_CREATED, {
-        assignmentId: assignment.id.toString(),
-        classId: assignment.classId.toString(),
-        classCode: classData.code,
-        action: "created",
-        type: "NEW_ASSIGNMENT"
+    const assignmentPayload = createSocketPayload(SOCKET_PAYLOAD_TYPES.ASSIGNMENT, SOCKET_EVENTS.ASSIGNMENT_CREATED, {
+      assignmentId: assignment.id.toString(),
+      classId: assignment.classId.toString(),
+      classCode: classData.code,
+      action: ASSIGNMENT_ACTIONS.CREATED,
+      type: ASSIGNMENT_NOTIFICATION_KINDS.NEW_ASSIGNMENT,
     });
 
-    io.to(`class:${classData.id}`).emit(SOCKET_EVENTS.ASSIGNMENT_CREATED, payload);
+    io.to(getRoomName(SOCKET_ROOM_PREFIXES.CLASS, classData.id)).emit(
+      SOCKET_EVENTS.ASSIGNMENT_CREATED,
+      assignmentPayload,
+    );
 
-    // Send FCM to all members
-    const members = classData.members;
-    const userIds = members.filter(m => m.userId !== authorId).map(m => m.userId);
-    if (userIds.length > 0) {
-      sendPushNotificationToUsers(userIds, payload);
-    }
+    const recipientIds = classData.members
+      .filter((member) => member.userId !== authorId)
+      .map((member) => member.userId);
+    const assignmentMessage = ASSIGNMENT_NOTIFICATION_MESSAGES.NEW_ASSIGNMENT({
+      assignmentTitle: assignment.title,
+    });
+    const notificationPayload = buildNotificationPayload({
+      id: `assignment-${assignment.id}-${Date.now()}`,
+      kind: ASSIGNMENT_NOTIFICATION_KINDS.NEW_ASSIGNMENT,
+      ...assignmentMessage,
+      assignmentId: assignment.id,
+      classId: classData.id,
+      classCode: classData.code,
+    });
+
+    await notifyUsersWithFallback({
+      io,
+      userIds: recipientIds,
+      senderId: authorId,
+      payload: notificationPayload,
+    });
   } catch (err) {
     console.error("Socket error on createAssignment:", err);
   }
@@ -178,28 +279,42 @@ export const submitAssignment = async (userId, postId, attachments) => {
 
   try {
     const io = getIO();
-    const payload = createSocketPayload("notification", SOCKET_EVENTS.NOTIFICATION_RECEIVED, {
-        id: Date.now().toString(),
-        title: "New Submission",
-        content: `User ${userId} has submitted assignment ${postId}`,
-        type: "SUBMISSION",
-        submissionId: submission.id.toString()
-    });
-    
-    // Notify the author (teacher) of the assignment
-    io.to(`user:${assignment.authorId}`).emit(SOCKET_EVENTS.NOTIFICATION_RECEIVED, payload);
-
-    // Also emit SUBMISSION_CREATED to the teacher
-    io.to(`user:${assignment.authorId}`).emit(SOCKET_EVENTS.SUBMISSION_CREATED, createSocketPayload("submission", SOCKET_EVENTS.SUBMISSION_CREATED, {
+    const submissionPayload = createSocketPayload(SOCKET_PAYLOAD_TYPES.SUBMISSION, SOCKET_EVENTS.SUBMISSION_CREATED, {
       submissionId: submission.id.toString(),
       assignmentId: postId.toString(),
       studentId: userId.toString(),
       status: submission.status,
-      action: "created",
-    }));
+      action: ASSIGNMENT_ACTIONS.CREATED,
+    });
 
-    // Always send FCM
-    sendPushNotification(assignment.authorId, payload);
+    const studentName = userInClass.name || `User ${userId}`;
+    const submissionMessage = ASSIGNMENT_NOTIFICATION_MESSAGES.SUBMISSION_CREATED({
+      studentName,
+      assignmentTitle: assignment.title,
+    });
+    const notificationPayload = buildNotificationPayload({
+      id: `submission-${submission.id}-${Date.now()}`,
+      kind: ASSIGNMENT_NOTIFICATION_KINDS.SUBMISSION_CREATED,
+      ...submissionMessage,
+      assignmentId: postId,
+      submissionId: submission.id,
+      classId: assignment.classId,
+      classCode: assignment.class.code,
+    });
+
+    const connectedUserIds = await notifyUsersWithFallback({
+      io,
+      userIds: [assignment.authorId],
+      senderId: userId,
+      payload: notificationPayload,
+    });
+
+    emitSubmissionEventToConnectedUsers(
+      io,
+      connectedUserIds,
+      SOCKET_EVENTS.SUBMISSION_CREATED,
+      submissionPayload,
+    );
   } catch (err) {
     console.error("Socket error on submitAssignment:", err);
   }
@@ -250,28 +365,40 @@ export const gradeSubmission = async (teacherId, submissionId, data) => {
 
   try {
     const io = getIO();
-    const payload = createSocketPayload("notification", SOCKET_EVENTS.NOTIFICATION_RECEIVED, {
-        id: Date.now().toString(),
-        title: "Assignment Graded",
-        content: `Your submission for assignment ${submission.postId} has been graded`,
-        type: "GRADE",
-        grade: data.grade,
-        submissionId: submissionId.toString()
-    });
-
-    // Notify the student about the grade
-    io.to(`user:${submission.studentId}`).emit(SOCKET_EVENTS.NOTIFICATION_RECEIVED, payload);
-
-    // Also emit SUBMISSION_GRADED
-    io.to(`user:${submission.studentId}`).emit(SOCKET_EVENTS.SUBMISSION_GRADED, createSocketPayload("submission", SOCKET_EVENTS.SUBMISSION_GRADED, {
+    const submissionPayload = createSocketPayload(SOCKET_PAYLOAD_TYPES.SUBMISSION, SOCKET_EVENTS.SUBMISSION_GRADED, {
       submissionId: submissionId.toString(),
       assignmentId: submission.postId.toString(),
       grade: data.grade,
-      action: "graded",
-    }));
+      action: ASSIGNMENT_ACTIONS.GRADED,
+    });
 
-    // Always send FCM
-    sendPushNotification(submission.studentId, payload);
+    const gradeMessage = ASSIGNMENT_NOTIFICATION_MESSAGES.SUBMISSION_GRADED({
+      assignmentTitle: submission.post.title,
+    });
+    const notificationPayload = buildNotificationPayload({
+      id: `grade-${submissionId}-${Date.now()}`,
+      kind: ASSIGNMENT_NOTIFICATION_KINDS.SUBMISSION_GRADED,
+      ...gradeMessage,
+      assignmentId: submission.postId,
+      submissionId,
+      classId: submission.post.classId,
+      classCode: submission.post.class.code,
+      grade: data.grade,
+    });
+
+    const connectedUserIds = await notifyUsersWithFallback({
+      io,
+      userIds: [submission.studentId],
+      senderId: teacherId,
+      payload: notificationPayload,
+    });
+
+    emitSubmissionEventToConnectedUsers(
+      io,
+      connectedUserIds,
+      SOCKET_EVENTS.SUBMISSION_GRADED,
+      submissionPayload,
+    );
   } catch (err) {
     console.error("Socket error on gradeSubmission:", err);
   }

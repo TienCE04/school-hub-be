@@ -125,7 +125,8 @@ export const createPost = async (data, user) => {
 
     // Send FCM to all members
     const members = await prisma.classMember.findMany({ where: { classId: classExists.id } });
-    const userIds = members.filter(m => m.userId !== user.id).map(m => m.userId);
+    // const userIds = members.filter(m => m.userId !== user.id).map(m => m.userId);
+    const userIds = members.map(m => m.userId);
     if (userIds.length > 0) {
       sendPushNotificationToUsers(userIds, payload);
     }
@@ -409,6 +410,21 @@ export const getClassMembers = async (classCode, user) => {
   }));
 };
 
+export const getClassRosterPage = async (classCode, user, page = 1, limit = 20, search = "") => {
+  const classExists = await repo.findClassByCode(classCode);
+  if (!classExists) throw new Error("Class not found");
+  await assertClassMember(user, classExists.id);
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeLimit = Math.min(50, Math.max(1, Number(limit) || 20));
+  const result = await repo.getClassRosterPage(classExists.id, safePage, safeLimit, search);
+  return {
+    ...result,
+    page: safePage,
+    limit: safeLimit,
+    totalPages: Math.ceil(result.total / safeLimit),
+  };
+};
+
 export const getMyClasses = async (userId) => {
   const memberships = await repo.findClassesByUserId(userId);
   return memberships.map((m) => {
@@ -419,6 +435,155 @@ export const getMyClasses = async (userId) => {
       joinedAt: m.joinedAt,
     };
   });
+};
+
+export const getAllClasses = async (page = 1, limit = 20, search = "") => {
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
+  const result = await repo.findAllClasses(safePage, safeLimit, search);
+  return {
+    classes: result.classes.map((classObj) => ({
+      id: classObj.id,
+      name: classObj.name,
+      description: classObj.description,
+      code: classObj.code,
+      createdAt: classObj.createdAt,
+      updatedAt: classObj.updatedAt,
+      members: classObj.members.map((member) => ({ ...member.user, joinedAt: member.joinedAt })),
+      membersCount: classObj._count.members,
+      postsCount: classObj._count.posts,
+      subject: classObj.subject,
+    })),
+    total: result.total,
+    page: safePage,
+    limit: safeLimit,
+    totalPages: Math.ceil(result.total / safeLimit),
+  };
+};
+
+export const getAdminClassMembers = async (classId, page = 1, limit = 20, search = "") => {
+  if (!(await repo.findClassById(classId))) throw new Error("Class not found");
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeLimit = Math.min(50, Math.max(1, Number(limit) || 20));
+  const result = await repo.getClassMembersPage(classId, safePage, safeLimit, search);
+  return {
+    ...result,
+    page: safePage,
+    limit: safeLimit,
+    totalPages: Math.ceil(result.total / safeLimit),
+  };
+};
+
+export const getAvailableClassStudents = async (classId, search = "") => {
+  if (!(await repo.findClassById(classId))) throw new Error("Class not found");
+  const normalizedSearch = String(search).trim();
+  if (normalizedSearch.length < 2) return [];
+  return repo.findAvailableClassStudents(classId, normalizedSearch);
+};
+
+export const updateClass = async (classId, data, user) => {
+  const classObj = await repo.findClassForAdmin(classId);
+  if (!classObj) throw new Error("Class not found");
+  if (user.role !== "ADMIN") await assertClassTeacher(user, classId);
+
+  const updateData = {};
+  if (data.name !== undefined) {
+    updateData.name = String(data.name).trim();
+    if (!updateData.name) throw new Error("Class name is required");
+  }
+  if (data.description !== undefined) updateData.description = String(data.description).trim() || null;
+  if (data.code !== undefined) {
+    updateData.code = String(data.code).trim();
+    if (!updateData.code) throw new Error("Class code is required");
+    const duplicate = await prisma.class.findFirst({ where: { code: updateData.code, NOT: { id: classId } } });
+    if (duplicate) throw new Error("Class code already exists");
+  }
+
+  const hasTeacherChange = Object.prototype.hasOwnProperty.call(data, "teacherId");
+  let teacherId = null;
+  if (hasTeacherChange && data.teacherId !== null && data.teacherId !== undefined) {
+    teacherId = Number(data.teacherId);
+    if (!Number.isInteger(teacherId)) throw new Error("Invalid teacher ID");
+    const teacher = await prisma.user.findUnique({ where: { id: teacherId }, select: { id: true, role: true } });
+    if (!teacher || teacher.role !== "TEACHER") throw new Error("Assigned user must be a teacher");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const updated = Object.keys(updateData).length > 0
+      ? await tx.class.update({ where: { id: classId }, data: updateData })
+      : classObj;
+
+    if (updateData.code !== undefined) {
+      await tx.subject.updateMany({ where: { classId }, data: { classCode: updateData.code } });
+    }
+
+    if (hasTeacherChange) {
+      const currentTeachers = await tx.classMember.findMany({
+        where: { classId },
+        include: { user: { select: { id: true, role: true } } },
+      });
+      const removeIds = currentTeachers
+      .filter((member) => member.user.role === "TEACHER")
+        // .filter((member) => member.user.role === "TEACHER" && member.user.id !== teacherId)
+        .map((member) => member.userId);
+      if (removeIds.length > 0) {
+        await tx.classMember.deleteMany({ where: { classId, userId: { in: removeIds } } });
+      }
+      if (teacherId !== null) {
+        await tx.classMember.createMany({
+          data: [{ classId, userId: teacherId }],
+          skipDuplicates: true,
+        });
+      }
+    }
+    return updated;
+  });
+};
+
+export const manageClassMembers = async (classId, data) => {
+  const classObj = await repo.findClassForAdmin(classId);
+  if (!classObj) throw new Error("Class not found");
+
+  const addUserIds = [...new Set((data.addUserIds || []).map(Number))];
+  const removeUserIds = [...new Set((data.removeUserIds || []).map(Number))];
+  if (data.userId !== undefined) {
+    const userId = Number(data.userId);
+    if (!Number.isInteger(userId)) throw new Error("Invalid user ID");
+    if (data.action === "add") addUserIds.push(userId);
+    if (data.action === "remove") removeUserIds.push(userId);
+  }
+  if (addUserIds.some((id) => !Number.isInteger(id)) || removeUserIds.some((id) => !Number.isInteger(id))) {
+    throw new Error("Invalid user ID");
+  }
+
+  const userIds = [...new Set([...addUserIds, ...removeUserIds])];
+  const users = userIds.length > 0
+    ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true } })
+    : [];
+  if (users.length !== userIds.length) throw new Error("One or more users were not found");
+
+  return prisma.$transaction(async (tx) => {
+    let removedCount = 0;
+    let addedCount = 0;
+    if (removeUserIds.length > 0) {
+      const result = await tx.classMember.deleteMany({ where: { classId, userId: { in: removeUserIds } } });
+      removedCount = result.count;
+    }
+    if (addUserIds.length > 0) {
+      const result = await tx.classMember.createMany({
+        data: [...new Set(addUserIds)].map((userId) => ({ classId, userId })),
+        skipDuplicates: true,
+      });
+      addedCount = result.count;
+    }
+    return { addedCount, removedCount };
+  });
+};
+
+export const deleteClass = async (classId) => {
+  const classObj = await repo.findClassForAdmin(classId);
+  if (!classObj) throw new Error("Class not found");
+  return repo.deleteClass(classId);
 };
 
 export const joinClassByCode = async (userId, code) => {

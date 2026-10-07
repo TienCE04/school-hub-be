@@ -127,11 +127,94 @@ export const getClassMembers = async (req, res) => {
   }
 };
 
+export const getClassRosterPage = async (req, res) => {
+  try {
+    const result = await service.getClassRosterPage(
+      req.params.classCode,
+      req.user,
+      Number.parseInt(req.query.page, 10) || 1,
+      Number.parseInt(req.query.limit, 10) || 20,
+      req.query.search,
+    );
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
 export const getMyClasses = async (req, res) => {
   try {
     const userId = req.user.id;
     const result = await service.getMyClasses(userId);
     res.json(result);
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
+export const getAllClasses = async (req, res) => {
+  try {
+    const page = Number.parseInt(req.query.page, 10) || 1;
+    const limit = Number.parseInt(req.query.limit, 10) || 20;
+    const search = req.query.search ? String(req.query.search) : "";
+    res.json(await service.getAllClasses(page, limit, search));
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
+export const updateClass = async (req, res) => {
+  try {
+    const classId = Number.parseInt(req.params.id, 10);
+    if (Number.isNaN(classId)) return res.status(400).json({ message: "Invalid class ID" });
+    res.json(await service.updateClass(classId, req.body, req.user));
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
+export const deleteClass = async (req, res) => {
+  try {
+    const classId = Number.parseInt(req.params.id, 10);
+    if (Number.isNaN(classId)) return res.status(400).json({ message: "Invalid class ID" });
+    await service.deleteClass(classId);
+    res.json({ message: "Class deleted successfully" });
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
+export const manageClassMembers = async (req, res) => {
+  try {
+    const classId = Number.parseInt(req.params.id, 10);
+    if (Number.isNaN(classId)) return res.status(400).json({ message: "Invalid class ID" });
+    res.json(await service.manageClassMembers(classId, req.body));
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
+export const getAdminClassMembers = async (req, res) => {
+  try {
+    const classId = Number.parseInt(req.params.id, 10);
+    if (Number.isNaN(classId)) return res.status(400).json({ message: "Invalid class ID" });
+    const result = await service.getAdminClassMembers(
+      classId,
+      Number.parseInt(req.query.page, 10) || 1,
+      Number.parseInt(req.query.limit, 10) || 20,
+      req.query.search,
+    );
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ message: e.message });
+  }
+};
+
+export const getAvailableClassStudents = async (req, res) => {
+  try {
+    const classId = Number.parseInt(req.params.id, 10);
+    if (Number.isNaN(classId)) return res.status(400).json({ message: "Invalid class ID" });
+    res.json({ users: await service.getAvailableClassStudents(classId, req.query.search) });
   } catch (e) {
     res.status(400).json({ message: e.message });
   }

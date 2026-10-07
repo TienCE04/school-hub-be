@@ -1,5 +1,14 @@
 import { getFirebaseAdmin } from '../../config/firebase.js';
 import prisma from '../../config/prisma.js';
+import { NOTIFICATION_CATEGORIES, SOCKET_PAYLOAD_TYPES } from '../constants/notification.constants.js';
+
+const copyScalarFields = (source, target, fields) => {
+  fields.forEach((field) => {
+    if (source[field] !== null && source[field] !== undefined) {
+      target[field] = source[field];
+    }
+  });
+};
 
 /**
  * Maps the generic socket payload to the flat data map expected by Android app
@@ -11,13 +20,13 @@ const mapPayloadToAndroidData = async (payload) => {
   };
 
   if (payload.type === 'chat' && ['new_message', 'message_received'].includes(payload.event) && payload.data) {
-    data.type = "Message";
+    data.type = NOTIFICATION_CATEGORIES.MESSAGE;
     data.title = payload.data.sender?.name || "New Message";
     data.content = payload.data.content || "You received a new message";
     data.avatar = payload.data.sender?.avatar || "";
     if (payload.data.conversationId) data.conversationId = payload.data.conversationId.toString();
   } else if (payload.type === 'post' && payload.data) {
-    data.type = "Post";
+    data.type = NOTIFICATION_CATEGORIES.POST;
     data.title = "New Post";
     data.content = "A new post was added to your class";
     if (payload.data.postId) data.postId = payload.data.postId.toString();
@@ -31,10 +40,10 @@ const mapPayloadToAndroidData = async (payload) => {
         if (classObj) data.classCode = classObj.code;
       }
     }
-  } else if (payload.type === 'assignment' && payload.data) {
-    data.type = "Assignment";
-    data.title = "New Assignment";
-    data.content = "A new assignment was posted in your class";
+  } else if (payload.type === SOCKET_PAYLOAD_TYPES.ASSIGNMENT && payload.data) {
+    data.type = NOTIFICATION_CATEGORIES.ASSIGNMENT;
+    data.title = payload.data.title || "New Assignment";
+    data.content = payload.data.content || "A new assignment was posted in your class";
     if (payload.data.assignmentId) data.assignmentId = payload.data.assignmentId.toString();
     
     // Fetch classCode
@@ -43,12 +52,22 @@ const mapPayloadToAndroidData = async (payload) => {
       const classObj = await prisma.class.findUnique({ where: { id: Number(classId) } });
       if (classObj) data.classCode = classObj.code;
     }
-  } else if (payload.type === 'notification' && payload.data) {
-    data.type = "University";
+  } else if (payload.type === SOCKET_PAYLOAD_TYPES.NOTIFICATION && payload.data) {
+    data.type = payload.data.notificationType || NOTIFICATION_CATEGORIES.UNIVERSITY;
     data.title = payload.data.title || "New Notification";
     data.content = payload.data.content || "";
+
+    copyScalarFields(payload.data, data, [
+      "assignmentId",
+      "submissionId",
+      "postId",
+      "classId",
+      "classCode",
+      "notificationKind",
+      "grade",
+    ]);
   } else {
-    data.type = "University";
+    data.type = NOTIFICATION_CATEGORIES.UNIVERSITY;
     data.title = "Notification";
     data.content = "";
   }
