@@ -16,13 +16,21 @@ export const createPostDto = (data) => {
   if (!content?.trim()) throw new Error("Content is required");
   // Assuming VALID_TYPES is handled elsewhere or globally
   if (!classCode) throw new Error("ClassCode is required");
+  if (!["ANNOUNCEMENT", "ASSIGNMENT"].includes(type)) {
+    throw new Error("Invalid post type");
+  }
+
+  const parsedDueDate = dueDate ? new Date(dueDate) : null;
+  if (parsedDueDate && Number.isNaN(parsedDueDate.getTime())) {
+    throw new Error("Invalid dueDate");
+  }
 
   return {
     title: title.trim(),
     content: content.trim(),
     type,
     classCode: String(classCode),
-    dueDate: dueDate ? new Date(dueDate) : null,
+    dueDate: parsedDueDate,
     attachments: Array.isArray(attachments) ? attachments : [],
   };
 };

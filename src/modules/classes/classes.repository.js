@@ -1,5 +1,14 @@
 import prisma from "../../config/prisma.js";
 
+const publicUserSelect = {
+  id: true,
+  name: true,
+  email: true,
+  studentCode: true,
+  avatar: true,
+  role: true,
+};
+
 export const findClassWithPosts = (classId) => {
   return prisma.class.findUnique({
     where: { id: classId },
@@ -8,9 +17,9 @@ export const findClassWithPosts = (classId) => {
         orderBy: { createdAt: 'desc' },
         take: 20,
         include: {
-          author: true,
+          author: { select: publicUserSelect },
           attachments: true,
-          comments: { include: { author: true, attachments: true } },
+          comments: { include: { author: { select: publicUserSelect }, attachments: true } },
           class: true,
         },
       },
@@ -38,7 +47,7 @@ export const createPost = (authorId, data) => {
         }))
       } : undefined
     },
-    include: { author: true, attachments: true, class: true },
+    include: { author: { select: publicUserSelect }, attachments: true, class: true },
   });
 };
 
@@ -47,7 +56,7 @@ export const updatePost = (postId, data) => {
   return prisma.post.update({
     where: { id: postId },
     data: postData,
-    include: { author: true, attachments: true, class: true },
+    include: { author: { select: publicUserSelect }, attachments: true, class: true },
   });
 };
 
@@ -63,14 +72,179 @@ export const findClassById = (classId) => {
   });
 };
 
+export const findClassForAdmin = (classId) => {
+  return prisma.class.findUnique({
+    where: { id: classId },
+    include: {
+      subject: { select: { id: true, title: true, subjectCode: true, semesterId: true } },
+      _count: { select: { members: true, posts: true } },
+    },
+  });
+};
+
+export const findAllClasses = async (page = 1, limit = 20, search = "") => {
+  const normalizedSearch = String(search || "").trim();
+  const where = normalizedSearch
+    ? {
+        OR: [
+          { name: { contains: normalizedSearch, mode: "insensitive" } },
+          { code: { contains: normalizedSearch, mode: "insensitive" } },
+        ],
+      }
+    : {};
+  const skip = (page - 1) * limit;
+  const [classes, total] = await Promise.all([
+    prisma.class.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { createdAt: "desc" },
+      include: {
+        members: {
+          where: { user: { is: { role: "TEACHER" } } },
+          include: { user: { select: publicUserSelect } },
+          orderBy: { joinedAt: "asc" },
+        },
+        subject: { select: { id: true, title: true, subjectCode: true, semesterId: true } },
+        _count: { select: { members: true, posts: true } },
+      },
+    }),
+    prisma.class.count({ where }),
+  ]);
+  return { classes, total };
+};
+
+export const updateClass = (classId, data) => {
+  return prisma.class.update({ where: { id: classId }, data });
+};
+
+export const deleteClass = async (classId) => {
+  return prisma.$transaction(async (tx) => {
+    const classObj = await tx.class.findUnique({
+      where: { id: classId },
+      include: {
+        posts: {
+          select: {
+            id: true,
+            comments: { select: { id: true } },
+            submissions: { select: { id: true } },
+          },
+        },
+        attendanceSessions: { select: { id: true } },
+      },
+    });
+    if (!classObj) throw new Error("Class not found");
+    if (classObj.attendanceSessions.length > 0) {
+      throw new Error("Cannot delete a class with attendance sessions");
+    }
+
+    const postIds = classObj.posts.map((post) => post.id);
+    const commentIds = classObj.posts.flatMap((post) => post.comments.map((comment) => comment.id));
+    const submissionIds = classObj.posts.flatMap((post) => post.submissions.map((submission) => submission.id));
+    if (postIds.length > 0) {
+      const attachmentFilters = [{ postId: { in: postIds } }];
+      if (commentIds.length > 0) attachmentFilters.push({ commentId: { in: commentIds } });
+      if (submissionIds.length > 0) attachmentFilters.push({ submissionId: { in: submissionIds } });
+      await tx.attachment.deleteMany({ where: { OR: attachmentFilters } });
+      await tx.comment.deleteMany({ where: { postId: { in: postIds } } });
+      await tx.submission.deleteMany({ where: { postId: { in: postIds } } });
+      await tx.post.deleteMany({ where: { id: { in: postIds } } });
+    }
+
+    await tx.subject.updateMany({ where: { classId }, data: { classId: null } });
+    await tx.class.delete({ where: { id: classId } });
+    return classObj;
+  });
+};
+
+export const getClassMembersPage = async (classId, page, limit, search) => {
+  const normalizedSearch = String(search || "").trim();
+  const where = {
+    classId,
+    ...(normalizedSearch ? {
+      user: {
+        is: {
+          OR: [
+            { name: { contains: normalizedSearch, mode: "insensitive" } },
+            { email: { contains: normalizedSearch, mode: "insensitive" } },
+            { studentCode: { contains: normalizedSearch, mode: "insensitive" } },
+          ],
+        },
+      },
+    } : {}),
+  };
+  const [members, total] = await Promise.all([
+    prisma.classMember.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: [{ joinedAt: "desc" }, { id: "desc" }],
+      include: { user: { select: publicUserSelect } },
+    }),
+    prisma.classMember.count({ where }),
+  ]);
+  return { members: members.map((member) => ({ ...member.user, joinedAt: member.joinedAt })), total };
+};
+
+export const getClassRosterPage = async (classId, page, limit, search) => {
+  const normalizedSearch = String(search || "").trim();
+  const studentWhere = {
+    classId,
+    user: {
+      is: {
+        role: "STUDENT",
+        ...(normalizedSearch ? {
+          OR: [
+            { name: { contains: normalizedSearch, mode: "insensitive" } },
+            { email: { contains: normalizedSearch, mode: "insensitive" } },
+            { studentCode: { contains: normalizedSearch, mode: "insensitive" } },
+          ],
+        } : {}),
+      },
+    },
+  };
+  const [students, total, teachers] = await Promise.all([
+    prisma.classMember.findMany({
+      where: studentWhere,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: [{ user: { name: "asc" } }, { id: "asc" }],
+      include: { user: { select: publicUserSelect } },
+    }),
+    prisma.classMember.count({ where: studentWhere }),
+    prisma.classMember.findMany({
+      where: { classId, user: { is: { role: { in: ["TEACHER", "ADMIN"] } } } },
+      orderBy: { joinedAt: "asc" },
+      include: { user: { select: publicUserSelect } },
+    }),
+  ]);
+  const toMember = (member) => ({ ...member.user, joinedAt: member.joinedAt });
+  return { students: students.map(toMember), teachers: teachers.map(toMember), total };
+};
+
+export const findAvailableClassStudents = (classId, search) => prisma.user.findMany({
+  where: {
+    role: "STUDENT",
+    classMembers: { none: { classId } },
+    OR: [
+      { name: { contains: search, mode: "insensitive" } },
+      { email: { contains: search, mode: "insensitive" } },
+      { studentCode: { contains: search, mode: "insensitive" } },
+    ],
+  },
+  select: publicUserSelect,
+  orderBy: { name: "asc" },
+  take: 15,
+});
+
 export const findPostById = (postId) => {
   return prisma.post.findUnique({
     where: { id: postId },
     include: {
-      author: true,
+      author: { select: publicUserSelect },
       attachments: true,
       class: true,
-      comments: { include: { author: true, attachments: true } },
+      comments: { include: { author: { select: publicUserSelect }, attachments: true } },
     },
   });
 };
@@ -83,7 +257,7 @@ export const findPostsByClass = async (classId, page = 1, limit = 10) => {
       take: limit,
       orderBy: { createdAt: "desc" },
       include: {
-        author: true,
+        author: { select: publicUserSelect },
         attachments: true,
       },
     }),
@@ -113,7 +287,7 @@ export const findAssignmentsByClass = async (classId, page = 1, limit = 10) => {
       take: limit,
       orderBy: { createdAt: "desc" },
       include: {
-        author: true,
+        author: { select: publicUserSelect },
         attachments: true,
       },
     }),
@@ -146,14 +320,14 @@ export const createComment = (authorId, postId, content, attachments) => {
         }))
       } : undefined
     },
-    include: { author: true, attachments: true, post: { include: { class: true } } },
+    include: { author: { select: publicUserSelect }, attachments: true, post: { include: { class: true } } },
   });
 };
 
 export const findCommentById = (commentId) => {
   return prisma.comment.findUnique({
     where: { id: commentId },
-    include: { post: { include: { class: true } }, author: true }
+    include: { post: { include: { class: true } }, author: { select: publicUserSelect } }
   });
 };
 
@@ -199,6 +373,7 @@ export const findClassMembers = (classId) => {
           id: true,
           name: true,
           email: true,
+          studentCode: true,
           avatar: true,
           role: true,
         },
@@ -212,13 +387,30 @@ export const findClassMembers = (classId) => {
 
 export const findClassesByUserId = (userId) => {
   return prisma.classMember.findMany({
-    where: { userId },
+    where: {
+      userId,
+      status: "ACTIVE",
+    },
     include: {
       class: {
         include: {
           members: {
-            select: { id: true }
-          }
+            select: {
+              id: true,
+              status: true,
+              user: { select: { role: true } },
+            },
+          },
+          subject: {
+            select: {
+              id: true,
+              title: true,
+            },
+          },
+          leaveRequests: {
+            where: { status: "PENDING" },
+            select: { id: true },
+          },
         }
       }
     },

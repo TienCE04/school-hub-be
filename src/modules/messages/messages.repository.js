@@ -115,7 +115,21 @@ export const createMessage = (
         }))
       } : undefined
     },
-    include: { sender: true, attachments: true },
+    include: {
+      sender: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          studentCode: true,
+          avatar: true,
+          role: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
+      attachments: true,
+    },
   });
 };
 

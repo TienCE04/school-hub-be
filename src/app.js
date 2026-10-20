@@ -10,10 +10,11 @@ import profileRoute from "./modules/profile/profile.route.js";
 import userRoute from "./modules/users/users.route.js";
 import leaveRequestRoute from "./modules/leave_requests/leave-requests.route.js";
 import mediaRoute from "./modules/media/media.route.js";
+import attendanceRoute from "./modules/attendance/attendance.route.js";
 
 const app = express();
 
-app.use(express.json());
+app.use(express.json({ limit: "2mb" }));
 
 // Auth
 app.use("/api/auth", authRoute);
@@ -44,5 +45,8 @@ app.use("/api/leave-requests", leaveRequestRoute);
 
 // Media
 app.use("/api/media", mediaRoute);
+
+// Attendance
+app.use("/api/attendance", attendanceRoute);
 
 export default app;

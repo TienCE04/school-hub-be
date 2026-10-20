@@ -2,7 +2,97 @@ import * as repo from "./assignments.repository.js";
 import prisma from "../../config/prisma.js";
 import { getIO } from "../../realtime/gateway/index.js";
 import { SOCKET_EVENTS } from "../../realtime/events/index.js";
-import { sendPushNotification, sendPushNotificationToUsers } from "../../shared/utils/fcm.js";
+import { createSocketPayload } from "../../realtime/events/payload.js";
+import { sendPushNotificationToUsers } from "../../shared/utils/fcm.js";
+import { SOCKET_PAYLOAD_TYPES, NOTIFICATION_CATEGORIES } from "../../shared/constants/notification.constants.js";
+import {
+  ASSIGNMENT_ACTIONS,
+  ASSIGNMENT_NOTIFICATION_KINDS,
+  ASSIGNMENT_NOTIFICATION_MESSAGES,
+} from "./assignments.constants.js";
+import {
+  toPublicUserDto,
+  toStudentAssignmentDetailDto,
+  toSubmissionDto,
+  toTeacherAssignmentDetailDto,
+} from "./dto/assignment-response.dto.js";
+
+const SOCKET_ROOM_PREFIXES = Object.freeze({
+  USER: "user:",
+  CLASS: "class:",
+});
+
+const getRoomName = (prefix, id) => `${prefix}${id}`;
+
+const isUserSocketConnected = (io, userId) => {
+  const room = io.sockets.adapter.rooms.get(
+    getRoomName(SOCKET_ROOM_PREFIXES.USER, userId),
+  );
+
+  return Boolean(room?.size);
+};
+
+const notifyUsersWithFallback = async ({ io, userIds, senderId, payload }) => {
+  const recipientIds = [...new Set(userIds.map(Number))].filter(
+    (userId) => userId !== Number(senderId),
+  );
+  const connectedUserIds = [];
+  const offlineUserIds = [];
+
+  recipientIds.forEach((userId) => {
+    if (isUserSocketConnected(io, userId)) {
+      connectedUserIds.push(userId);
+    } else {
+      offlineUserIds.push(userId);
+    }
+  });
+
+  connectedUserIds.forEach((userId) => {
+    io.to(getRoomName(SOCKET_ROOM_PREFIXES.USER, userId)).emit(
+      SOCKET_EVENTS.NOTIFICATION_RECEIVED,
+      payload,
+    );
+  });
+
+  if (offlineUserIds.length > 0) {
+    await sendPushNotificationToUsers(offlineUserIds, payload);
+  }
+
+  return connectedUserIds;
+};
+
+const buildNotificationPayload = ({
+  id,
+  kind,
+  title,
+  content,
+  assignmentId,
+  submissionId,
+  classId,
+  classCode,
+  grade,
+}) => createSocketPayload(
+  SOCKET_PAYLOAD_TYPES.NOTIFICATION,
+  SOCKET_EVENTS.NOTIFICATION_RECEIVED,
+  {
+    id,
+    title,
+    content,
+    notificationType: NOTIFICATION_CATEGORIES.ASSIGNMENT,
+    notificationKind: kind,
+    assignmentId: assignmentId?.toString(),
+    submissionId: submissionId?.toString(),
+    classId: classId?.toString(),
+    classCode,
+    grade,
+  },
+);
+
+const emitSubmissionEventToConnectedUsers = (io, userIds, event, payload) => {
+  userIds.forEach((userId) => {
+    io.to(getRoomName(SOCKET_ROOM_PREFIXES.USER, userId)).emit(event, payload);
+  });
+};
 
 /**
  * CREATE ASSIGNMENT
@@ -14,7 +104,6 @@ export const createAssignment = async (authorId, data) => {
     where: { code: data.classCode },
     include: {
       members: {
-        where: { userId: authorId },
         include: { user: true }
       },
     },
@@ -22,8 +111,12 @@ export const createAssignment = async (authorId, data) => {
 
   if (!classData) throw new Error("Class not found");
 
-  const userInClass = classData.members[0]?.user;
-  if (!userInClass || !["TEACHER", "ADMIN"].includes(userInClass.role)) {
+  const author = await prisma.user.findUnique({
+    where: { id: authorId },
+    select: { id: true, role: true },
+  });
+  const userInClass = classData.members.find((member) => member.userId === authorId)?.user;
+  if (!author || (author.role !== "ADMIN" && (!userInClass || userInClass.role !== "TEACHER"))) {
     throw new Error("Permission denied");
   }
 
@@ -34,23 +127,40 @@ export const createAssignment = async (authorId, data) => {
 
   try {
     const io = getIO();
-    const payload = {
-      type: "assignment",
-      data: {
-        assignmentId: assignment.id.toString(),
-        classId: assignment.classId.toString(),
-        type: "NEW_ASSIGNMENT"
-      }
-    };
-    
-    io.to(`class:${data.classId}`).emit(SOCKET_EVENTS.ASSIGNMENT_CREATED, payload);
+    const assignmentPayload = createSocketPayload(SOCKET_PAYLOAD_TYPES.ASSIGNMENT, SOCKET_EVENTS.ASSIGNMENT_CREATED, {
+      assignmentId: assignment.id.toString(),
+      classId: assignment.classId.toString(),
+      classCode: classData.code,
+      action: ASSIGNMENT_ACTIONS.CREATED,
+      type: ASSIGNMENT_NOTIFICATION_KINDS.NEW_ASSIGNMENT,
+    });
 
-    // Send FCM to all members
-    const members = classData.members;
-    const userIds = members.filter(m => m.userId !== authorId).map(m => m.userId);
-    if (userIds.length > 0) {
-      sendPushNotificationToUsers(userIds, payload);
-    }
+    io.to(getRoomName(SOCKET_ROOM_PREFIXES.CLASS, classData.id)).emit(
+      SOCKET_EVENTS.ASSIGNMENT_CREATED,
+      assignmentPayload,
+    );
+
+    const recipientIds = classData.members
+      .filter((member) => member.userId !== authorId)
+      .map((member) => member.userId);
+    const assignmentMessage = ASSIGNMENT_NOTIFICATION_MESSAGES.NEW_ASSIGNMENT({
+      assignmentTitle: assignment.title,
+    });
+    const notificationPayload = buildNotificationPayload({
+      id: `assignment-${assignment.id}-${Date.now()}`,
+      kind: ASSIGNMENT_NOTIFICATION_KINDS.NEW_ASSIGNMENT,
+      ...assignmentMessage,
+      assignmentId: assignment.id,
+      classId: classData.id,
+      classCode: classData.code,
+    });
+
+    await notifyUsersWithFallback({
+      io,
+      userIds: recipientIds,
+      senderId: authorId,
+      payload: notificationPayload,
+    });
   } catch (err) {
     console.error("Socket error on createAssignment:", err);
   }
@@ -58,122 +168,73 @@ export const createAssignment = async (authorId, data) => {
   return assignment;
 };
 
-/**
- * GET ASSIGNMENT DETAIL
- * - Teacher: xem tất cả
- * - Student: chỉ xem của mình
- */
-export const getAssignmentDetail = async (userId, postId) => {
+const getAssignmentForDetail = async (postId) => {
   const assignment = await repo.getAssignmentWithSubmissions(postId);
 
   if (!assignment) throw new Error("Assignment not found");
+  if (assignment.type !== "ASSIGNMENT") throw new Error("Post is not an assignment");
+
+  return assignment;
+};
+
+/**
+ * GET STUDENT ASSIGNMENT DETAIL
+ * Returns the task plus the current student's submission only.
+ */
+export const getStudentAssignmentDetail = async (userId, postId) => {
+  const assignment = await getAssignmentForDetail(postId);
+  const currentMember = assignment.class.members.find((member) => member.userId === userId);
+
+  if (!currentMember || currentMember.user.role !== "STUDENT") {
+    throw new Error("Student is not in this class");
+  }
+
+  const submission = assignment.submissions.find((item) => item.studentId === userId) || null;
+  return toStudentAssignmentDetailDto(assignment, submission);
+};
+
+/**
+ * GET TEACHER ASSIGNMENT DETAIL
+ * Returns assignment metadata, statistics and every student's submission.
+ */
+export const getTeacherAssignmentDetail = async (userId, postId) => {
+  const assignment = await getAssignmentForDetail(postId);
+  const currentMember = assignment.class.members.find((member) => member.userId === userId);
+  const requester = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+
+  if (!requester || (requester.role !== "ADMIN" && (!currentMember || currentMember.user.role !== "TEACHER"))) {
+    throw new Error("Teacher is not allowed to view this assignment");
+  }
 
   const allMembers = assignment.class?.members?.map((m) => m.user) || [];
   const submissions = assignment.submissions || [];
-
-  // ===== CHECK ROLE =====
-  const currentUser = allMembers.find((u) => u.id === userId);
-
-  if (!currentUser) {
-    throw new Error("User not in this class");
-  }
-
-  const isTeacher = ["TEACHER", "ADMIN"].includes(currentUser.role);
   const allStudents = allMembers.filter((u) => u.role === "STUDENT");
 
-  // ===== STATS =====
-  const submittedCount = submissions.filter(
-    (s) => s.status === "SUBMITTED",
-  ).length;
-
+  const submittedStatuses = new Set(["SUBMITTED", "LATE", "GRADED"]);
+  const submittedCount = submissions.filter((s) => submittedStatuses.has(s.status)).length;
   const lateCount = submissions.filter((s) => s.status === "LATE").length;
+  const gradedCount = submissions.filter((s) => s.status === "GRADED").length;
 
   const stats = {
     totalStudents: allStudents.length,
     submittedCount,
     lateCount,
-    notSubmittedCount: allStudents.length - submittedCount - lateCount,
+    gradedCount,
+    notSubmittedCount: Math.max(0, allStudents.length - submittedCount),
   };
 
-  // ===== MAP =====
   const submissionMap = new Map(submissions.map((s) => [s.studentId, s]));
+  const students = allStudents.map((student) => ({
+    student: toPublicUserDto(student),
+    submission: submissionMap.has(student.id)
+      ? toSubmissionDto(submissionMap.get(student.id))
+      : null,
+  }));
 
-  // ===== RESPONSE =====
-  let students = [];
-
-  if (isTeacher) {
-    // Teacher: xem toàn bộ
-    students = allStudents.map((student) => {
-      const submission = submissionMap.get(student.id);
-
-      return {
-        student: {
-          id: student.id,
-          name: student.name,
-          email: student.email,
-        },
-        assignment: {
-          id: assignment.id,
-          title: assignment.title,
-          dueDate: assignment.dueDate.toISOString(),
-        },
-        submission: submission
-          ? {
-            id: submission.id,
-            student: {
-              id: student.id,
-              name: student.name,
-              avatar: student.avatar || "",
-              email: student.email,
-              role: student.role,
-            },
-            status: submission.status,
-            grade: submission.grade,
-            feedback: submission.feedback,
-            submittedAt: submission.submittedAt?.toISOString(),
-            attachments: submission.attachments,
-          }
-          : null,
-      };
-    });
-  } else {
-    // Student: chỉ xem mình
-    const submission = submissionMap.get(userId);
-
-    students = [
-      {
-        student: {
-          id: currentUser.id,
-          name: currentUser.name,
-          email: currentUser.email,
-        },
-        assignment: {
-          id: assignment.id,
-          title: assignment.title,
-          dueDate: assignment.dueDate.toISOString(),
-        },
-        submission: submission
-          ? {
-            id: submission.id,
-            student: {
-              id: currentUser.id,
-              name: currentUser.name,
-              avatar: currentUser.avatar || "",
-              email: currentUser.email,
-              role: currentUser.role,
-            },
-            status: submission.status,
-            grade: submission.grade,
-            feedback: submission.feedback,
-            submittedAt: submission.submittedAt?.toISOString(),
-            attachments: submission.attachments,
-          }
-          : null,
-      },
-    ];
-  }
-
-  return { stats, students };
+  return toTeacherAssignmentDetailDto(assignment, stats, students);
 };
 
 /**
@@ -194,6 +255,7 @@ export const submitAssignment = async (userId, postId, attachments) => {
   });
 
   if (!assignment) throw new Error("Assignment not found");
+  if (assignment.type !== "ASSIGNMENT") throw new Error("Post is not an assignment");
 
   // Check user thuộc class
   const userInClass = assignment.class.members.find((m) => m.userId === userId)?.user;
@@ -208,7 +270,7 @@ export const submitAssignment = async (userId, postId, attachments) => {
 
   // Check deadline
   const now = new Date();
-  const status = now > assignment.dueDate ? "LATE" : "SUBMITTED";
+  const status = assignment.dueDate && now > assignment.dueDate ? "LATE" : "SUBMITTED";
 
   const submission = await repo.upsertSubmission(userId, postId, {
     attachments,
@@ -217,49 +279,47 @@ export const submitAssignment = async (userId, postId, attachments) => {
 
   try {
     const io = getIO();
-    const payload = {
-      type: "notification",
-      data: {
-        id: Date.now().toString(),
-        title: "New Submission",
-        content: `User ${userId} has submitted assignment ${postId}`,
-        type: "SUBMISSION",
-        submissionId: submission.id.toString()
-      }
-    };
-    
-    // Notify the author (teacher) of the assignment
-    io.to(`user:${assignment.authorId}`).emit(SOCKET_EVENTS.NOTIFICATION_RECEIVED, payload);
-
-    // Also emit SUBMISSION_CREATED to the teacher
-    io.to(`user:${assignment.authorId}`).emit(SOCKET_EVENTS.SUBMISSION_CREATED, {
+    const submissionPayload = createSocketPayload(SOCKET_PAYLOAD_TYPES.SUBMISSION, SOCKET_EVENTS.SUBMISSION_CREATED, {
       submissionId: submission.id.toString(),
       assignmentId: postId.toString(),
       studentId: userId.toString(),
-      status: submission.status
+      status: submission.status,
+      action: ASSIGNMENT_ACTIONS.CREATED,
     });
 
-    // Always send FCM
-    sendPushNotification(assignment.authorId, payload);
+    const studentName = userInClass.name || `User ${userId}`;
+    const submissionMessage = ASSIGNMENT_NOTIFICATION_MESSAGES.SUBMISSION_CREATED({
+      studentName,
+      assignmentTitle: assignment.title,
+    });
+    const notificationPayload = buildNotificationPayload({
+      id: `submission-${submission.id}-${Date.now()}`,
+      kind: ASSIGNMENT_NOTIFICATION_KINDS.SUBMISSION_CREATED,
+      ...submissionMessage,
+      assignmentId: postId,
+      submissionId: submission.id,
+      classId: assignment.classId,
+      classCode: assignment.class.code,
+    });
+
+    const connectedUserIds = await notifyUsersWithFallback({
+      io,
+      userIds: [assignment.authorId],
+      senderId: userId,
+      payload: notificationPayload,
+    });
+
+    emitSubmissionEventToConnectedUsers(
+      io,
+      connectedUserIds,
+      SOCKET_EVENTS.SUBMISSION_CREATED,
+      submissionPayload,
+    );
   } catch (err) {
     console.error("Socket error on submitAssignment:", err);
   }
 
-  return {
-    id: submission.id,
-    student: {
-      id: submission.student.id,
-      name: submission.student.name,
-      avatar: submission.student.avatar || "",
-      email: submission.student.email,
-      role: submission.student.role,
-    },
-    status: submission.status,
-    grade: submission.grade,
-    feedback: submission.feedback,
-    submittedAt: submission.submittedAt?.toISOString(),
-    attachments: submission.attachments,
-  };
+  return toSubmissionDto(submission);
 };
 
 /**
@@ -283,68 +343,67 @@ export const gradeSubmission = async (teacherId, submissionId, data) => {
   });
 
   if (!submission) throw new Error("Submission not found");
+  if (submission.post.type !== "ASSIGNMENT") throw new Error("Submission does not belong to an assignment");
 
   const classUsers = submission.post.class.members.map((m) => m.user);
 
   const teacher = classUsers.find((u) => u.id === teacherId);
+  const requester = await prisma.user.findUnique({
+    where: { id: teacherId },
+    select: { role: true },
+  });
 
-  if (!teacher || !["TEACHER", "ADMIN"].includes(teacher.role)) {
+  if (!requester || (requester.role !== "ADMIN" && (!teacher || teacher.role !== "TEACHER"))) {
     throw new Error("Permission denied");
   }
 
-  const updatedSubmission = await prisma.submission.update({
-    where: { id: submissionId },
-    data: {
-      grade: data.grade,
-      feedback: data.feedback,
-    },
+  const updatedSubmission = await repo.updateSubmissionGrade(submissionId, {
+    grade: data.grade,
+    feedback: data.feedback,
+    status: "GRADED",
   });
 
   try {
     const io = getIO();
-    const payload = {
-      type: "notification",
-      data: {
-        id: Date.now().toString(),
-        title: "Assignment Graded",
-        content: `Your submission for assignment ${submission.postId} has been graded`,
-        type: "GRADE",
-        grade: data.grade,
-        submissionId: submissionId.toString()
-      }
-    };
-    
-    // Notify the student about the grade
-    io.to(`user:${submission.studentId}`).emit(SOCKET_EVENTS.NOTIFICATION_RECEIVED, payload);
-
-    // Also emit SUBMISSION_GRADED
-    io.to(`user:${submission.studentId}`).emit(SOCKET_EVENTS.SUBMISSION_GRADED, {
+    const submissionPayload = createSocketPayload(SOCKET_PAYLOAD_TYPES.SUBMISSION, SOCKET_EVENTS.SUBMISSION_GRADED, {
       submissionId: submissionId.toString(),
       assignmentId: submission.postId.toString(),
-      grade: data.grade
+      grade: data.grade,
+      action: ASSIGNMENT_ACTIONS.GRADED,
     });
 
-    // Always send FCM
-    sendPushNotification(submission.studentId, payload);
+    const gradeMessage = ASSIGNMENT_NOTIFICATION_MESSAGES.SUBMISSION_GRADED({
+      assignmentTitle: submission.post.title,
+    });
+    const notificationPayload = buildNotificationPayload({
+      id: `grade-${submissionId}-${Date.now()}`,
+      kind: ASSIGNMENT_NOTIFICATION_KINDS.SUBMISSION_GRADED,
+      ...gradeMessage,
+      assignmentId: submission.postId,
+      submissionId,
+      classId: submission.post.classId,
+      classCode: submission.post.class.code,
+      grade: data.grade,
+    });
+
+    const connectedUserIds = await notifyUsersWithFallback({
+      io,
+      userIds: [submission.studentId],
+      senderId: teacherId,
+      payload: notificationPayload,
+    });
+
+    emitSubmissionEventToConnectedUsers(
+      io,
+      connectedUserIds,
+      SOCKET_EVENTS.SUBMISSION_GRADED,
+      submissionPayload,
+    );
   } catch (err) {
     console.error("Socket error on gradeSubmission:", err);
   }
 
-  return {
-    id: updatedSubmission.id,
-    student: {
-      id: updatedSubmission.student.id,
-      name: updatedSubmission.student.name,
-      avatar: updatedSubmission.student.avatar || "",
-      email: updatedSubmission.student.email,
-      role: updatedSubmission.student.role,
-    },
-    status: updatedSubmission.status,
-    grade: updatedSubmission.grade,
-    feedback: updatedSubmission.feedback,
-    submittedAt: updatedSubmission.submittedAt?.toISOString(),
-    attachments: updatedSubmission.attachments,
-  };
+  return toSubmissionDto(updatedSubmission);
 };
 
 /**

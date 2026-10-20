@@ -19,7 +19,7 @@ const router = express.Router();
 router.post(
   "/",
   authenticate,
-  authorize("TEACHER", "ADMIN"),
+  authorize(["TEACHER", "ADMIN"]),
   controller.createAssignment,
 );
 
@@ -49,11 +49,28 @@ router.get(
 );
 
 /**
- * GET ASSIGNMENT DETAIL
- * Student / Teacher đều xem được
- * GET /assignments/:id
+ * GET STUDENT ASSIGNMENT DETAIL
+ * Returns one task plus the current student's submission.
+ * GET /assignments/:id/student-detail
  */
-router.get("/:id", authenticate, controller.getAssignmentDetail);
+router.get(
+  "/:id/student-detail",
+  authenticate,
+  authorize(["STUDENT"]),
+  controller.getStudentAssignmentDetail,
+);
+
+/**
+ * GET TEACHER ASSIGNMENT DETAIL
+ * Returns assignment summary, statistics and all student submissions.
+ * GET /assignments/:id/teacher-detail
+ */
+router.get(
+  "/:id/teacher-detail",
+  authenticate,
+  authorize(["TEACHER", "ADMIN"]),
+  controller.getTeacherAssignmentDetail,
+);
 
 /**
  * SUBMIT ASSIGNMENT

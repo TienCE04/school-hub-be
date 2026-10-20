@@ -7,54 +7,67 @@ datasource db {
 }
 
 model User {
-  id             Int                @id @default(autoincrement())
-  name           String
-  email          String             @unique
-  studentCode    String?            @unique
-  password       String
-  avatar         String?
-  role           Role
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  joinRequests   ClassJoinRequest[]
-  classMembers   ClassMember[]
-  comments       Comment[]          @relation("UserComments")
-  deviceTokens   DeviceToken[]
-  driveFiles     DriveFile[]
-  messages       Message[]          @relation("UserMessages")
-  participants   Participant[]
-  posts          Post[]             @relation("UserPosts")
-  profile        Profile?
-  tokens         RefreshToken[]
-  subjectMembers SubjectMember[]
-  submissions    Submission[]       @relation("UserSubmissions")
-  leaveRequests  LeaveRequest[]     @relation("UserLeaveRequests")
+  id                            Int                            @id @default(autoincrement())
+  name                          String
+  email                         String                         @unique
+  studentCode                   String?                        @unique
+  password                      String
+  avatar                        String?
+  role                          Role
+  createdAt                     DateTime                       @default(now())
+  updatedAt                     DateTime                       @updatedAt
+  joinRequests                  ClassJoinRequest[]
+  classMembers                  ClassMember[]
+  comments                      Comment[]                      @relation("UserComments")
+  deviceTokens                  DeviceToken[]
+  driveFiles                    DriveFile[]
+  messages                      Message[]                      @relation("UserMessages")
+  participants                  Participant[]
+  posts                         Post[]                         @relation("UserPosts")
+  profile                       Profile?
+  tokens                        RefreshToken[]
+  subjectMembers                SubjectMember[]
+  submissions                   Submission[]                   @relation("UserSubmissions")
+  leaveRequests                 LeaveRequest[]                 @relation("UserLeaveRequests")
+  attendanceSessionsLed         AttendanceSession[]            @relation("AttendanceSessionTeacher")
+  attendanceRecords             AttendanceRecord[]             @relation("AttendanceRecordStudent")
+  attendanceRecordsReviewed     AttendanceRecord[]             @relation("AttendanceRecordReviewer")
+  attendanceReviews             AttendanceReview[]             @relation("AttendanceReviewReviewer")
+  attendanceDevices             AttendanceDevice[]             @relation("AttendanceDeviceOwner")
+  attendanceSessionParticipants AttendanceSessionParticipant[] @relation("AttendanceParticipantStudent")
+  attendanceAuditLogs           AttendanceAuditLog[]           @relation("AttendanceAuditActor")
+  faceProfile                   FaceProfile?
 }
 
 model Class {
-  id           Int                @id @default(autoincrement())
-  name         String
-  description  String?
-  code         String             @unique
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
-  joinRequests ClassJoinRequest[]
-  members      ClassMember[]
-  driveFiles   DriveFile[]
-  posts        Post[]
-  subject      Subject?
-  leaveRequests LeaveRequest[]
+  id                 Int                 @id @default(autoincrement())
+  name               String
+  description        String?
+  code               String              @unique
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  joinRequests       ClassJoinRequest[]
+  members            ClassMember[]
+  driveFiles         DriveFile[]
+  posts              Post[]
+  subject            Subject?
+  leaveRequests      LeaveRequest[]
+  attendanceSessions AttendanceSession[]
 }
 
 model ClassMember {
-  id       Int      @id @default(autoincrement())
-  userId   Int
-  classId  Int
-  joinedAt DateTime @default(now())
-  class    Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                            Int                            @id @default(autoincrement())
+  userId                        Int
+  classId                       Int
+  joinedAt                      DateTime                       @default(now())
+  status                        ClassMemberStatus              @default(ACTIVE)
+  leftAt                        DateTime?
+  class                         Class                          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  user                          User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attendanceSessionParticipants AttendanceSessionParticipant[]
 
   @@unique([userId, classId])
+  @@index([classId, status])
 }
 
 model ClassJoinRequest {
@@ -110,6 +123,8 @@ model Submission {
   attachments Attachment[]
   post        Post             @relation(fields: [postId], references: [id])
   student     User             @relation("UserSubmissions", fields: [studentId], references: [id])
+
+  @@unique([studentId, postId])
 }
 
 model Attachment {
@@ -160,7 +175,7 @@ model Message {
   isEdited       Boolean      @default(false)
   isDeleted      Boolean      @default(false)
   createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt @default(now())
+  updatedAt      DateTime     @default(now()) @updatedAt
   senderId       Int
   conversationId Int
   attachments    Attachment[]
@@ -184,20 +199,21 @@ model Semester {
 }
 
 model Subject {
-  id          Int             @id @default(autoincrement())
-  title       String
-  subjectCode String
-  classCode   String
-  location    String
-  startTime   DateTime
-  endTime     DateTime
-  startDate   DateTime
-  classId     Int?            @unique
-  semesterId  Int
-  session     SessionType
-  class       Class?          @relation(fields: [classId], references: [id])
-  semester    Semester        @relation(fields: [semesterId], references: [id])
-  members     SubjectMember[]
+  id                 Int                 @id @default(autoincrement())
+  title              String
+  subjectCode        String
+  classCode          String
+  location           String
+  startTime          DateTime
+  endTime            DateTime
+  startDate          DateTime
+  classId            Int?                @unique
+  semesterId         Int
+  session            SessionType
+  class              Class?              @relation(fields: [classId], references: [id])
+  semester           Semester            @relation(fields: [semesterId], references: [id])
+  members            SubjectMember[]
+  attendanceSessions AttendanceSession[]
 }
 
 model SubjectMember {
@@ -294,17 +310,18 @@ enum SessionType {
 }
 
 model LeaveRequest {
-  id        Int                @id @default(autoincrement())
-  studentId Int
-  classId   Int
-  date      DateTime
-  reason    String
-  evidence  String?
-  status    LeaveRequestStatus @default(PENDING)
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
-  student   User               @relation("UserLeaveRequests", fields: [studentId], references: [id], onDelete: Cascade)
-  class     Class              @relation(fields: [classId], references: [id], onDelete: Cascade)
+  id                Int                @id @default(autoincrement())
+  studentId         Int
+  classId           Int
+  date              DateTime
+  reason            String
+  evidence          String?
+  status            LeaveRequestStatus @default(PENDING)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  student           User               @relation("UserLeaveRequests", fields: [studentId], references: [id], onDelete: Cascade)
+  class             Class              @relation(fields: [classId], references: [id], onDelete: Cascade)
+  attendanceRecords AttendanceRecord[]
 
   @@index([studentId])
   @@index([classId])
@@ -314,4 +331,412 @@ enum LeaveRequestStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+// Attendance domain. The source of truth for the final result is the backend;
+// mobile offline data is represented as an attempt waiting for synchronization.
+model AttendanceDevice {
+  id              Int                    @id @default(autoincrement())
+  deviceKey       String                 @unique
+  name            String?
+  type            AttendanceDeviceType   @default(TEACHER_PHONE)
+  status          AttendanceDeviceStatus @default(ACTIVE)
+  ownerId         Int
+  secretHash      String?
+  firmwareVersion String?
+  lastSeenAt      DateTime?
+  pairedAt        DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  owner           User                   @relation("AttendanceDeviceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  sessions        AttendanceSession[]
+
+  @@index([ownerId, status])
+}
+
+model AttendanceSession {
+  id             Int                            @id @default(autoincrement())
+  classId        Int
+  subjectId      Int?
+  teacherId      Int
+  deviceId       Int?
+  sessionCode    String                         @unique
+  attendanceDate DateTime                       @db.Date
+  startsAt       DateTime
+  expiresAt      DateTime
+  endedAt        DateTime?
+  status         AttendanceSessionStatus        @default(DRAFT)
+  createdAt      DateTime                       @default(now())
+  updatedAt      DateTime                       @updatedAt
+  class          Class                          @relation(fields: [classId], references: [id], onDelete: Restrict)
+  subject        Subject?                       @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  teacher        User                           @relation("AttendanceSessionTeacher", fields: [teacherId], references: [id], onDelete: Restrict)
+  device         AttendanceDevice?              @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  config         AttendanceSessionConfig?
+  participants   AttendanceSessionParticipant[]
+  records        AttendanceRecord[]
+  challenges     AttendanceSessionChallenge[]
+  auditLogs      AttendanceAuditLog[]
+
+  @@index([classId, attendanceDate])
+  @@index([teacherId, startsAt])
+  @@index([status, expiresAt])
+}
+
+model AttendanceSessionConfig {
+  id                           Int               @id @default(autoincrement())
+  sessionId                    Int               @unique
+  requireBle                   Boolean           @default(true)
+  requireFace                  Boolean           @default(true)
+  faceLivenessRequired         Boolean           @default(true)
+  allowLate                    Boolean           @default(true)
+  allowManualReview            Boolean           @default(true)
+  allowOfflineAttempt          Boolean           @default(true)
+  lateAfterMinutes             Int               @default(0)
+  maxAttemptSeconds            Int               @default(90)
+  bleRssiThreshold             Int?
+  bleMinScanCount              Int               @default(1)
+  bleScanDurationSeconds       Int               @default(10)
+  faceSimilarityThreshold      Float?
+  faceLivenessChallengeSeconds Int               @default(30)
+  bleTokenHash                 String?
+  bleTokenExpiresAt            DateTime?
+  bleStartedAt                 DateTime?
+  bleStoppedAt                 DateTime?
+  createdAt                    DateTime          @default(now())
+  updatedAt                    DateTime          @updatedAt
+  session                      AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
+model AttendanceSessionParticipant {
+  id                  Int                         @id @default(autoincrement())
+  sessionId           Int
+  studentId           Int
+  classMemberId       Int?
+  studentCodeSnapshot String?
+  studentNameSnapshot String?
+  status              AttendanceParticipantStatus @default(ACTIVE)
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
+  session             AttendanceSession           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student             User                        @relation("AttendanceParticipantStudent", fields: [studentId], references: [id], onDelete: Restrict)
+  classMember         ClassMember?                @relation(fields: [classMemberId], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, studentId])
+  @@index([sessionId, status])
+  @@index([studentId, createdAt])
+}
+
+model AttendanceRecord {
+  id                 Int                          @id @default(autoincrement())
+  sessionId          Int
+  studentId          Int
+  leaveRequestId     Int?
+  status             AttendanceStatus             @default(PENDING)
+  verificationStatus AttendanceVerificationStatus @default(NOT_STARTED)
+  source             AttendanceRecordSource       @default(ONLINE)
+  attemptedAt        DateTime?
+  checkedInAt        DateTime?
+  finalScore         Float?
+  note               String?
+  reviewedById       Int?
+  reviewedAt         DateTime?
+  reviewNote         String?
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+  session            AttendanceSession            @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student            User                         @relation("AttendanceRecordStudent", fields: [studentId], references: [id], onDelete: Restrict)
+  leaveRequest       LeaveRequest?                @relation(fields: [leaveRequestId], references: [id], onDelete: SetNull)
+  reviewedBy         User?                        @relation("AttendanceRecordReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  attempts           AttendanceAttempt[]
+  reviews            AttendanceReview[]
+
+  @@unique([sessionId, studentId])
+  @@index([sessionId, status])
+  @@index([studentId, createdAt])
+  @@index([leaveRequestId])
+}
+
+model AttendanceAttempt {
+  id                Int                          @id @default(autoincrement())
+  recordId          Int
+  clientAttemptId   String                       @unique
+  status            AttendanceAttemptStatus      @default(PENDING_SYNC)
+  source            AttendanceRecordSource       @default(ONLINE)
+  clientDeviceId    String?
+  clientRecordedAt  DateTime?
+  initiatedAt       DateTime?
+  submittedAt       DateTime?
+  serverReceivedAt  DateTime?
+  latitude          Float?
+  longitude         Float?
+  locationAccuracyM Float?
+  networkType       String?
+  errorCode         String?
+  errorMessage      String?
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+  record            AttendanceRecord             @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  bleEvidence       AttendanceBleEvidence?
+  faceVerification  AttendanceFaceVerification?
+  challenges        AttendanceSessionChallenge[]
+
+  @@index([recordId, createdAt])
+  @@index([status, serverReceivedAt])
+  @@index([clientDeviceId])
+}
+
+model AttendanceBleEvidence {
+  id                    Int                      @id @default(autoincrement())
+  attemptId             Int                      @unique
+  advertisedDeviceKey   String?
+  advertisedSessionCode String?
+  tokenFingerprint      String?
+  rssiMin               Int?
+  rssiMax               Int?
+  rssiAverage           Float?
+  scanCount             Int                      @default(0)
+  scanDurationMs        Int?
+  firstSeenAt           DateTime?
+  lastSeenAt            DateTime?
+  status                AttendanceEvidenceStatus @default(PENDING)
+  verifiedAt            DateTime?
+  failureReason         String?
+  createdAt             DateTime                 @default(now())
+  attempt               AttendanceAttempt        @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@index([advertisedDeviceKey])
+  @@index([status, createdAt])
+}
+
+model AttendanceFaceVerification {
+  id                 Int                      @id @default(autoincrement())
+  attemptId          Int                      @unique
+  challengeType      AttendanceChallengeType?
+  challengeHash      String?
+  challengeExpiresAt DateTime?
+  modelName          String?
+  modelVersion       String?
+  embeddingDimension Int?
+  similarityScore    Float?
+  livenessScore      Float?
+  qualityScore       Float?
+  status             AttendanceEvidenceStatus @default(PENDING)
+  evidenceUrl        String?
+  processedAt        DateTime?
+  failureReason      String?
+  createdAt          DateTime                 @default(now())
+  attempt            AttendanceAttempt        @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+}
+
+model AttendanceSessionChallenge {
+  id               Int                            @id @default(autoincrement())
+  sessionId        Int
+  attemptId        Int?
+  type             AttendanceSessionChallengeType
+  faceAction       AttendanceChallengeType?
+  challengeHash    String
+  tokenFingerprint String?
+  nonce            String?
+  issuedAt         DateTime
+  expiresAt        DateTime
+  singleUse        Boolean                        @default(false)
+  consumedAt       DateTime?
+  createdAt        DateTime                       @default(now())
+  session          AttendanceSession              @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  attempt          AttendanceAttempt?             @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId, type, expiresAt])
+  @@index([challengeHash])
+  @@index([attemptId])
+}
+
+model FaceProfile {
+  id                 Int                   @id @default(autoincrement())
+  userId             Int                   @unique
+  status             FaceProfileStatus     @default(NOT_ENROLLED)
+  modelName          String?
+  modelVersion       String?
+  consentAt          DateTime?
+  enrolledAt         DateTime?
+  consentVersion     String?
+  consentRevokedAt   DateTime?
+  retentionExpiresAt DateTime?
+  revokedReason      String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  samples            FaceEmbeddingSample[]
+}
+
+model FaceEmbeddingSample {
+  id           Int         @id @default(autoincrement())
+  profileId    Int
+  embedding    Json
+  dimension    Int
+  modelName    String
+  modelVersion String
+  sampleType   String?
+  qualityScore Float?
+  yaw          Float?
+  pitch        Float?
+  roll         Float?
+  sourceUrl    String?
+  capturedAt   DateTime?
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  profile      FaceProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, isActive])
+}
+
+model AttendanceReview {
+  id                         Int                           @id @default(autoincrement())
+  recordId                   Int
+  reviewerId                 Int
+  decision                   AttendanceReviewDecision
+  note                       String?
+  previousStatus             AttendanceStatus?
+  newStatus                  AttendanceStatus?
+  previousVerificationStatus AttendanceVerificationStatus?
+  newVerificationStatus      AttendanceVerificationStatus?
+  reasonCode                 String?
+  createdAt                  DateTime                      @default(now())
+  record                     AttendanceRecord              @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  reviewer                   User                          @relation("AttendanceReviewReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+
+  @@index([recordId, createdAt])
+  @@index([reviewerId, createdAt])
+}
+
+model AttendanceAuditLog {
+  id         Int                   @id @default(autoincrement())
+  actorId    Int?
+  sessionId  Int?
+  action     AttendanceAuditAction
+  entityType String
+  entityId   Int?
+  metadata   Json?
+  createdAt  DateTime              @default(now())
+  actor      User?                 @relation("AttendanceAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  session    AttendanceSession?    @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
+}
+
+enum AttendanceDeviceType {
+  TEACHER_PHONE
+  ESP32
+}
+
+enum AttendanceDeviceStatus {
+  PENDING
+  ACTIVE
+  REVOKED
+  OFFLINE
+}
+
+enum AttendanceSessionStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  ENDED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PENDING
+  PRESENT
+  LATE
+  ABSENT
+  EXCUSED
+  REVIEW
+  REJECTED
+}
+
+enum AttendanceVerificationStatus {
+  NOT_STARTED
+  VERIFYING
+  VERIFIED
+  REVIEW_REQUIRED
+  REJECTED
+}
+
+enum AttendanceRecordSource {
+  ONLINE
+  OFFLINE
+  MANUAL
+}
+
+enum AttendanceAttemptStatus {
+  PENDING_SYNC
+  RECEIVED
+  VERIFYING
+  VERIFIED
+  PENDING_REVIEW
+  REJECTED
+  EXPIRED
+}
+
+enum AttendanceEvidenceStatus {
+  PENDING
+  VERIFIED
+  FAILED
+  REVIEW_REQUIRED
+}
+
+enum AttendanceChallengeType {
+  BLINK
+  SMILE
+  TURN_LEFT
+  TURN_RIGHT
+  NOD
+}
+
+enum FaceProfileStatus {
+  NOT_ENROLLED
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+enum AttendanceReviewDecision {
+  APPROVE
+  REJECT
+  MARK_PRESENT
+  MARK_ABSENT
+  MARK_EXCUSED
+}
+
+enum ClassMemberStatus {
+  ACTIVE
+  LEFT
+  SUSPENDED
+}
+
+enum AttendanceParticipantStatus {
+  ACTIVE
+  REMOVED
+}
+
+enum AttendanceSessionChallengeType {
+  BLE_TOKEN
+  FACE_CHALLENGE
+}
+
+enum AttendanceAuditAction {
+  CREATE_SESSION
+  START_SESSION
+  STOP_SESSION
+  FINALIZE_SESSION
+  CREATE_ATTEMPT
+  CANCEL_ATTEMPT
+  REVIEW_RECORD
+  MANUAL_UPDATE_RECORD
+  PAIR_DEVICE
+  REVOKE_DEVICE
+  ENROLL_FACE
+  SUSPEND_FACE_PROFILE
 }

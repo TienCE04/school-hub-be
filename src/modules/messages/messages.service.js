@@ -2,7 +2,19 @@ import * as repo from "./messages.repository.js";
 import prisma from "../../config/prisma.js";
 import { getIO } from "../../realtime/gateway/index.js";
 import { SOCKET_EVENTS } from "../../realtime/events/index.js";
+import { createSocketPayload } from "../../realtime/events/payload.js";
 import { sendPushNotification } from "../../shared/utils/fcm.js";
+
+// Keep the REST and Socket message contracts identical. Prisma returns Date
+// objects, while the Android MessageDto expects epoch milliseconds plus the
+// transport fields below.
+const toMessageDto = (message) => ({
+  ...message,
+  createdAt: message.createdAt.getTime(),
+  updatedAt: message.updatedAt ? message.updatedAt.getTime() : undefined,
+  isRead: true,
+  status: "SENT",
+});
 
 export const getUserConversations = async (userId, skip = 0, take = 30) => {
   const list = await repo.getConversationsByUser(userId, skip, take);
@@ -22,19 +34,25 @@ export const getUserConversations = async (userId, skip = 0, take = 30) => {
         myParticipantInfo.lastReadAt,
       );
 
-      const otherParticipant = conv.participants.find(p => p.userId !== userId);
-      const userObj = otherParticipant ? otherParticipant.user : conv.participants[0]?.user;
+      const otherParticipant = conv.participants.find(
+        (p) => p.userId !== userId,
+      );
+      const userObj = otherParticipant
+        ? otherParticipant.user
+        : conv.participants[0]?.user;
 
-      const participantUser = userObj ? {
-        id: String(userObj.id),
-        nameUser: userObj.name || "",
-        email: userObj.email || "",
-        mssv: userObj.studentCode || "",
-        avatar: userObj.avatar || "",
-        role: userObj.role || "STUDENT",
-        createdAt: userObj.createdAt,
-        updatedAt: userObj.updatedAt
-      } : null;
+      const participantUser = userObj
+        ? {
+            id: String(userObj.id),
+            nameUser: userObj.name || "",
+            email: userObj.email || "",
+            mssv: userObj.studentCode || "",
+            avatar: userObj.avatar || "",
+            role: userObj.role || "STUDENT",
+            createdAt: userObj.createdAt,
+            updatedAt: userObj.updatedAt,
+          }
+        : null;
 
       return {
         id: conv.id,
@@ -44,14 +62,14 @@ export const getUserConversations = async (userId, skip = 0, take = 30) => {
         participant: participantUser,
         lastMessage: lastMsg
           ? {
-            id: lastMsg.id,
-            content: lastMsg.content,
-            createdAt: lastMsg.createdAt.getTime(),
-            sender: lastMsg.sender,
-            attachments: lastMsg.attachments,
-            isRead: true,
-            status: "SENT"
-          }
+              id: lastMsg.id,
+              content: lastMsg.content,
+              createdAt: lastMsg.createdAt.getTime(),
+              sender: lastMsg.sender,
+              attachments: lastMsg.attachments,
+              isRead: true,
+              status: "SENT",
+            }
           : null,
         lastTime: lastMsg
           ? lastMsg.createdAt.getTime()
@@ -68,34 +86,37 @@ export const getConversationById = async (userId, conversationId) => {
     throw new Error("Not found");
   }
 
-  const myParticipantInfo = conv.participants.find(
-    (p) => p.userId === userId,
-  );
+  const myParticipantInfo = conv.participants.find((p) => p.userId === userId);
 
   if (!myParticipantInfo) {
     throw new Error("Forbidden");
   }
 
-  const lastMsg = conv.messages && conv.messages.length > 0 ? conv.messages[0] : null;
+  const lastMsg =
+    conv.messages && conv.messages.length > 0 ? conv.messages[0] : null;
   const unreadCount = await repo.countUnread(
     conv.id,
     userId,
     myParticipantInfo.lastReadAt,
   );
 
-  const otherParticipant = conv.participants.find(p => p.userId !== userId);
-  const userObj = otherParticipant ? otherParticipant.user : conv.participants[0]?.user;
+  const otherParticipant = conv.participants.find((p) => p.userId !== userId);
+  const userObj = otherParticipant
+    ? otherParticipant.user
+    : conv.participants[0]?.user;
 
-  const participantUser = userObj ? {
-    id: String(userObj.id),
-    nameUser: userObj.name || "",
-    email: userObj.email || "",
-    mssv: userObj.studentCode || "",
-    avatar: userObj.avatar || "",
-    role: userObj.role || "STUDENT",
-    createdAt: userObj.createdAt,
-    updatedAt: userObj.updatedAt
-  } : null;
+  const participantUser = userObj
+    ? {
+        id: String(userObj.id),
+        nameUser: userObj.name || "",
+        email: userObj.email || "",
+        mssv: userObj.studentCode || "",
+        avatar: userObj.avatar || "",
+        role: userObj.role || "STUDENT",
+        createdAt: userObj.createdAt,
+        updatedAt: userObj.updatedAt,
+      }
+    : null;
 
   return {
     id: conv.id,
@@ -105,18 +126,16 @@ export const getConversationById = async (userId, conversationId) => {
     participant: participantUser,
     lastMessage: lastMsg
       ? {
-        id: lastMsg.id,
-        content: lastMsg.content,
-        createdAt: lastMsg.createdAt.getTime(),
-        sender: lastMsg.sender,
-        attachments: lastMsg.attachments,
-        isRead: true,
-        status: "SENT"
-      }
+          id: lastMsg.id,
+          content: lastMsg.content,
+          createdAt: lastMsg.createdAt.getTime(),
+          sender: lastMsg.sender,
+          attachments: lastMsg.attachments,
+          isRead: true,
+          status: "SENT",
+        }
       : null,
-    lastTime: lastMsg
-      ? lastMsg.createdAt.getTime()
-      : conv.updatedAt.getTime(),
+    lastTime: lastMsg ? lastMsg.createdAt.getTime() : conv.updatedAt.getTime(),
     unreadCount,
   };
 };
@@ -131,9 +150,11 @@ export const getOrCreatePrivateConversation = async (userId, receiverId) => {
         type: "PRIVATE",
         privateKey,
         participants: {
-          create: Array.from(new Set([userId, receiverId])).map(id => ({ userId: id }))
-        }
-      }
+          create: Array.from(new Set([userId, receiverId])).map((id) => ({
+            userId: id,
+          })),
+        },
+      },
     });
 
     try {
@@ -141,15 +162,21 @@ export const getOrCreatePrivateConversation = async (userId, receiverId) => {
       const convData = {
         id: existing.id,
         type: existing.type,
-        participants: [userId, receiverId]
+        participants: [userId, receiverId],
       };
-      const socketPayload = {
-        type: "chat",
-        event: "conversation_created",
-        data: convData
-      };
-      io.to(`user:${userId}`).emit(SOCKET_EVENTS.CONVERSATION_CREATED, socketPayload);
-      io.to(`user:${receiverId}`).emit(SOCKET_EVENTS.CONVERSATION_CREATED, socketPayload);
+      const socketPayload = createSocketPayload(
+        "chat",
+        "conversation_created",
+        convData,
+      );
+      io.to(`user:${userId}`).emit(
+        SOCKET_EVENTS.CONVERSATION_CREATED,
+        socketPayload,
+      );
+      io.to(`user:${receiverId}`).emit(
+        SOCKET_EVENTS.CONVERSATION_CREATED,
+        socketPayload,
+      );
     } catch (err) {
       console.error("Socket error on create conversation:", err);
     }
@@ -173,9 +200,11 @@ export const sendMessage = async (senderId, data) => {
           type: "PRIVATE",
           privateKey,
           participants: {
-            create: Array.from(new Set([senderId, data.receiverId])).map(id => ({ userId: id }))
-          }
-        }
+            create: Array.from(new Set([senderId, data.receiverId])).map(
+              (id) => ({ userId: id }),
+            ),
+          },
+        },
       });
 
       try {
@@ -183,15 +212,21 @@ export const sendMessage = async (senderId, data) => {
         const convData = {
           id: existing.id,
           type: existing.type,
-          participants: [senderId, data.receiverId]
+          participants: [senderId, data.receiverId],
         };
-        const socketPayload = {
-          type: "chat",
-          event: "conversation_created",
-          data: convData
-        };
-        io.to(`user:${senderId}`).emit(SOCKET_EVENTS.CONVERSATION_CREATED, socketPayload);
-        io.to(`user:${data.receiverId}`).emit(SOCKET_EVENTS.CONVERSATION_CREATED, socketPayload);
+        const socketPayload = createSocketPayload(
+          "chat",
+          "conversation_created",
+          convData,
+        );
+        io.to(`user:${senderId}`).emit(
+          SOCKET_EVENTS.CONVERSATION_CREATED,
+          socketPayload,
+        );
+        io.to(`user:${data.receiverId}`).emit(
+          SOCKET_EVENTS.CONVERSATION_CREATED,
+          socketPayload,
+        );
       } catch (err) {
         console.error("Socket error on create conversation:", err);
       }
@@ -204,8 +239,8 @@ export const sendMessage = async (senderId, data) => {
   const participant = await prisma.participant.findFirst({
     where: {
       conversationId: convId,
-      userId: senderId
-    }
+      userId: senderId,
+    },
   });
 
   if (!participant) {
@@ -219,14 +254,23 @@ export const sendMessage = async (senderId, data) => {
         senderId,
         conversationId: convId,
         content: data.content,
-        attachments: data.attachments && data.attachments.length > 0 ? {
-          create: data.attachments.map(att => ({
-            name: typeof att === 'string' ? att.split('/').pop() : att.name || "Attachment",
-            url: typeof att === 'string' ? att : att.url,
-            mimeType: typeof att === 'string' ? "application/octet-stream" : att.mimeType || "application/octet-stream",
-            size: typeof att === 'string' ? 0 : att.size || 0,
-          }))
-        } : undefined
+        attachments:
+          data.attachments && data.attachments.length > 0
+            ? {
+                create: data.attachments.map((att) => ({
+                  name:
+                    typeof att === "string"
+                      ? att.split("/").pop()
+                      : att.name || "Attachment",
+                  url: typeof att === "string" ? att : att.url,
+                  mimeType:
+                    typeof att === "string"
+                      ? "application/octet-stream"
+                      : att.mimeType || "application/octet-stream",
+                  size: typeof att === "string" ? 0 : att.size || 0,
+                })),
+              }
+            : undefined,
       },
       include: {
         sender: {
@@ -238,16 +282,16 @@ export const sendMessage = async (senderId, data) => {
             avatar: true,
             role: true,
             createdAt: true,
-            updatedAt: true
-          }
+            updatedAt: true,
+          },
         },
-        attachments: true
-      }
+        attachments: true,
+      },
     });
 
     await tx.conversation.update({
       where: { id: convId },
-      data: { updatedAt: new Date() }
+      data: { updatedAt: new Date() },
     });
 
     return msg;
@@ -255,41 +299,39 @@ export const sendMessage = async (senderId, data) => {
 
   // Fetch all participants to emit socket event
   const allParticipants = await prisma.participant.findMany({
-    where: { conversationId: convId }
+    where: { conversationId: convId },
   });
 
   try {
     const io = getIO();
 
     // Format message to match REST API
-    const messageDto = {
-      ...message,
-      createdAt: message.createdAt.getTime(),
-      updatedAt: message.updatedAt ? message.updatedAt.getTime() : undefined,
-      isRead: true,
-      status: "SENT"
-    };
+    const messageDto = toMessageDto(message);
 
-    allParticipants.forEach(p => {
-      const socketPayload = {
-        type: "chat",
-        event: "new_message",
-        data: messageDto
-      };
+    allParticipants.forEach((p) => {
+      const transportEvent =
+        p.userId === senderId
+          ? SOCKET_EVENTS.MESSAGE_SENT
+          : SOCKET_EVENTS.MESSAGE_RECEIVED;
+      const socketPayload = createSocketPayload(
+        "chat",
+        transportEvent,
+        messageDto,
+      );
 
       // Check if user is connected
       const room = io.sockets.adapter.rooms.get(`user:${p.userId}`);
       if (room && room.size > 0) {
         // User is connected, emit socket event
-        io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, socketPayload);
+        io.to(`user:${p.userId}`).emit(transportEvent, socketPayload);
       }
 
       // Always send push notification so the app can save it to local DB.
-      if (p.userId !== senderId) {
-        sendPushNotification(p.userId, socketPayload);
-      }
+      sendPushNotification(p.userId, socketPayload);
+      // if (p.userId !== senderId) {
+      //   sendPushNotification(p.userId, socketPayload);
+      // }
     });
-
   } catch (err) {
     console.error("Socket error on sendMessage:", err);
   }
@@ -297,7 +339,13 @@ export const sendMessage = async (senderId, data) => {
   return messageDto;
 };
 
-export const getConversationMessages = async (userId, conversationId, limit = 30, after, before) => {
+export const getConversationMessages = async (
+  userId,
+  conversationId,
+  limit = 30,
+  after,
+  before,
+) => {
   // Check if user is a participant
   const participant = await prisma.participant.findUnique({
     where: {
@@ -312,16 +360,15 @@ export const getConversationMessages = async (userId, conversationId, limit = 30
     throw new Error("Forbidden");
   }
 
-  const messages = await repo.getMessagesByConversation(conversationId, limit, after, before);
+  const messages = await repo.getMessagesByConversation(
+    conversationId,
+    limit,
+    after,
+    before,
+  );
 
   // Format to match MessageDto
-  return messages.map((msg) => ({
-    ...msg,
-    createdAt: msg.createdAt.getTime(),
-    updatedAt: msg.updatedAt ? msg.updatedAt.getTime() : undefined,
-    isRead: true,
-    status: "SENT"
-  }));
+  return messages.map(toMessageDto);
 };
 
 export const markAsRead = async (userId, conversationId) => {
@@ -345,23 +392,26 @@ export const markAsRead = async (userId, conversationId) => {
   try {
     const io = getIO();
     const allParticipants = await prisma.participant.findMany({
-      where: { conversationId }
+      where: { conversationId },
     });
 
-    const socketPayload = {
-      type: "chat",
-      event: "status",
-      data: {
+    const socketPayload = createSocketPayload(
+      "chat",
+      "message_status_updated",
+      {
         messageId: null, // indicating the whole conversation or last state
-        status: "SEEN"
-      }
-    };
+        status: "SEEN",
+      },
+    );
 
-    allParticipants.forEach(p => {
+    allParticipants.forEach((p) => {
       // Don't send to the one who just read (or you can if you want their UI to sync)
       const room = io.sockets.adapter.rooms.get(`user:${p.userId}`);
       if (room && room.size > 0) {
-        io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, socketPayload);
+        io.to(`user:${p.userId}`).emit(
+          SOCKET_EVENTS.MESSAGE_STATUS_UPDATED,
+          socketPayload,
+        );
       }
     });
   } catch (err) {
@@ -380,35 +430,27 @@ export const editMessage = async (userId, messageId, newContent) => {
 
   // Send socket event
   try {
-    const io = global.io;
+    const io = getIO();
     const conv = await repo.getConversationById(msg.conversationId);
     if (io && conv) {
-      const socketPayload = {
-        type: "chat",
-        event: "MessageEdited",
-        data: {
-          message: {
-            id: String(updatedMsg.id),
-            conversationId: String(updatedMsg.conversationId),
-            senderId: String(updatedMsg.senderId),
-            content: updatedMsg.content,
-            isEdited: updatedMsg.isEdited,
-            isDeleted: updatedMsg.isDeleted,
-            createdAt: updatedMsg.createdAt.getTime(),
-            updatedAt: updatedMsg.updatedAt.getTime(),
-          }
-        }
-      };
+      const socketPayload = createSocketPayload(
+        "chat",
+        "message_edited",
+        toMessageDto(updatedMsg),
+      );
 
-      conv.participants.forEach(p => {
-        io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, socketPayload);
+      conv.participants.forEach((p) => {
+        io.to(`user:${p.userId}`).emit(
+          SOCKET_EVENTS.MESSAGE_EDITED,
+          socketPayload,
+        );
       });
     }
   } catch (err) {
     console.error("Socket error on editMessage:", err);
   }
 
-  return updatedMsg;
+  return toMessageDto(updatedMsg);
 };
 
 export const deleteMessage = async (userId, messageId) => {
@@ -420,33 +462,25 @@ export const deleteMessage = async (userId, messageId) => {
 
   // Send socket event
   try {
-    const io = global.io;
+    const io = getIO();
     const conv = await repo.getConversationById(msg.conversationId);
     if (io && conv) {
-      const socketPayload = {
-        type: "chat",
-        event: "MessageDeleted",
-        data: {
-          message: {
-            id: String(deletedMsg.id),
-            conversationId: String(deletedMsg.conversationId),
-            senderId: String(deletedMsg.senderId),
-            content: deletedMsg.content,
-            isEdited: deletedMsg.isEdited,
-            isDeleted: deletedMsg.isDeleted,
-            createdAt: deletedMsg.createdAt.getTime(),
-            updatedAt: deletedMsg.updatedAt.getTime(),
-          }
-        }
-      };
+      const socketPayload = createSocketPayload(
+        "chat",
+        "message_deleted",
+        toMessageDto(deletedMsg),
+      );
 
-      conv.participants.forEach(p => {
-        io.to(`user:${p.userId}`).emit(SOCKET_EVENTS.MESSAGE_RECEIVED, socketPayload);
+      conv.participants.forEach((p) => {
+        io.to(`user:${p.userId}`).emit(
+          SOCKET_EVENTS.MESSAGE_DELETED,
+          socketPayload,
+        );
       });
     }
   } catch (err) {
     console.error("Socket error on deleteMessage:", err);
   }
 
-  return deletedMsg;
+  return toMessageDto(deletedMsg);
 };
