@@ -1,4 +1,5 @@
 import prisma from "../../config/prisma.js";
+import { getFaceEnrollmentMethod, hasUsableFaceSampleSet } from "./attendance.checkin.shared.js";
 import {
   badRequest, parseDate, parseOptionalInt, SESSION_STATUSES, toIso, toSessionDto,
 } from "./attendance.service.shared.js";
@@ -76,7 +77,7 @@ export const getMyFaceProfile = async (studentId) => {
       retentionExpiresAt: true,
       samples: {
         where: { isActive: true },
-        select: { id: true },
+        select: { sampleType: true },
       },
     },
   });
@@ -85,6 +86,7 @@ export const getMyFaceProfile = async (studentId) => {
     return {
       status: "NOT_ENROLLED",
       sampleCount: 0,
+      enrollmentMethod: null,
       consentAt: null,
       consentVersion: null,
       modelName: null,
@@ -95,11 +97,13 @@ export const getMyFaceProfile = async (studentId) => {
 
   const usable = profile.status === "ACTIVE"
     && !profile.consentRevokedAt
-    && (!profile.retentionExpiresAt || profile.retentionExpiresAt > new Date());
+    && (!profile.retentionExpiresAt || profile.retentionExpiresAt > new Date())
+    && hasUsableFaceSampleSet(profile.samples);
 
   return {
     status: usable ? profile.status : profile.status === "ACTIVE" ? "SUSPENDED" : profile.status,
     sampleCount: usable ? profile.samples.length : 0,
+    enrollmentMethod: usable ? getFaceEnrollmentMethod(profile.samples) : null,
     consentAt: toIso(profile.consentAt),
     consentVersion: profile.consentVersion || null,
     modelName: profile.modelName || null,

@@ -3,7 +3,8 @@ import { hashToken } from "../../shared/utils/hash.js";
 import { decryptFaceEmbedding } from "./face-embedding.crypto.js";
 import {
   badRequest, conflict, cosineSimilarity, FACE_CHALLENGE_ACTIONS, fail,
-  getAttemptExpiry, getFaceThreshold, getStudentAttempt, normalizeEmbedding, parseId, toIso,
+  getAttemptExpiry, getFaceThreshold, getStudentAttempt, hasUsableFaceSampleSet,
+  normalizeEmbedding, parseId, toIso,
 } from "./attendance.checkin.shared.js";
 
 export const submitFaceEvidence = async (studentId, rawAttemptId, body = {}) => {
@@ -21,11 +22,7 @@ export const submitFaceEvidence = async (studentId, rawAttemptId, body = {}) => 
   if (typeof livenessPassed !== "boolean") throw badRequest("livenessPassed must be a boolean");
   const { vector: probeEmbedding, dimension } = normalizeEmbedding(body.probeEmbedding, "probeEmbedding");
   if (body.dimension != null && Number(body.dimension) !== dimension) throw badRequest("dimension does not match probeEmbedding");
-  const livenessScore = body.livenessScore == null ? null : Number(body.livenessScore);
   const qualityScore = body.qualityScore == null ? null : Number(body.qualityScore);
-  if (livenessScore !== null && (!Number.isFinite(livenessScore) || livenessScore < 0 || livenessScore > 1)) {
-    throw badRequest("livenessScore must be between 0 and 1");
-  }
   if (qualityScore !== null && (!Number.isFinite(qualityScore) || qualityScore < 0 || qualityScore > 1)) {
     throw badRequest("qualityScore must be between 0 and 1");
   }
@@ -91,7 +88,7 @@ export const submitFaceEvidence = async (studentId, rawAttemptId, body = {}) => 
     });
     if (!faceProfile || faceProfile.status !== "ACTIVE" || faceProfile.consentRevokedAt
         || (faceProfile.retentionExpiresAt && faceProfile.retentionExpiresAt <= now)
-        || faceProfile.samples.length < 3) {
+        || !hasUsableFaceSampleSet(faceProfile.samples)) {
       throw conflict("FACE_PROFILE_REQUIRED", "Hồ sơ khuôn mặt không còn hiệu lực");
     }
     if (faceProfile.modelName !== modelName || faceProfile.modelVersion !== modelVersion
@@ -114,6 +111,13 @@ export const submitFaceEvidence = async (studentId, rawAttemptId, body = {}) => 
     });
     if (!challenge) throw fail(422, "FACE_CHALLENGE_INVALID", "Face challenge không hợp lệ hoặc đã hết hạn");
 
+    const isCaptureMode = completedChallengeType === "CAPTURE";
+    if (isCaptureMode && session.config?.faceLivenessRequired !== false) {
+      throw conflict("FACE_CAPTURE_MODE_DISABLED", "Phiên này yêu cầu xác minh liveness");
+    }
+    if (isCaptureMode === livenessPassed) {
+      throw badRequest("livenessPassed does not match the selected face verification mode");
+    }
     const threshold = getFaceThreshold();
 
     const consumed = await tx.attendanceSessionChallenge.updateMany({
@@ -131,7 +135,7 @@ export const submitFaceEvidence = async (studentId, rawAttemptId, body = {}) => 
     let checkedInAt = null;
     let errorMessage = null;
 
-    if (!livenessPassed && session.config?.faceLivenessRequired) {
+    if (!livenessPassed && !isCaptureMode) {
       resultStatus = "FAILED";
       attemptStatus = "REJECTED";
       recordStatus = "PENDING";
@@ -191,7 +195,7 @@ export const submitFaceEvidence = async (studentId, rawAttemptId, body = {}) => 
         modelVersion,
         embeddingDimension: dimension,
         similarityScore,
-        livenessScore,
+        livenessScore: null,
         qualityScore,
         status: resultStatus,
         evidenceUrl: null,

@@ -1,6 +1,7 @@
 import prisma from "../../config/prisma.js";
 import {
-  addAuditLog, badRequest, conflict, getAttemptResponse, getStudentAttempt, notFound, parseId,
+  addAuditLog, badRequest, conflict, getAttemptResponse, getStudentAttempt,
+  hasUsableFaceSampleSet, notFound, parseId,
 } from "./attendance.checkin.shared.js";
 
 export const createStudentAttendanceAttempt = async (studentId, rawSessionId, body = {}) => {
@@ -54,9 +55,9 @@ export const createStudentAttendanceAttempt = async (studentId, rawSessionId, bo
 
       const faceProfile = await tx.faceProfile.findUnique({
         where: { userId: studentId },
-        include: { samples: { where: { isActive: true }, select: { id: true } } },
+        include: { samples: { where: { isActive: true }, select: { id: true, sampleType: true } } },
       });
-      if (!faceProfile || faceProfile.status !== "ACTIVE" || faceProfile.samples.length < 3
+      if (!faceProfile || faceProfile.status !== "ACTIVE" || !hasUsableFaceSampleSet(faceProfile.samples)
           || faceProfile.consentRevokedAt || (faceProfile.retentionExpiresAt && faceProfile.retentionExpiresAt <= now)) {
         throw conflict("FACE_PROFILE_REQUIRED", "Sinh viên cần đăng ký khuôn mặt còn hiệu lực trước khi điểm danh");
       }

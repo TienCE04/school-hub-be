@@ -1,11 +1,32 @@
 import crypto from "node:crypto";
 import { hashToken } from "../../shared/utils/hash.js";
 
-export const FACE_CHALLENGE_TTL_SECONDS = 30;
+export const FACE_CHALLENGE_TTL_SECONDS = 60;
 export const REQUIRED_SAMPLE_TYPES = ["FRONT", "LEFT", "RIGHT"];
-export const FACE_SAMPLE_TYPES = [...REQUIRED_SAMPLE_TYPES, "EXTRA"];
-export const FACE_CHALLENGE_ACTIONS = ["BLINK", "SMILE", "TURN_LEFT", "TURN_RIGHT", "NOD"];
+export const PROFILE_AVATAR_SAMPLE_TYPE = "PROFILE_AVATAR";
+export const FACE_SAMPLE_TYPES = [...REQUIRED_SAMPLE_TYPES, "EXTRA", PROFILE_AVATAR_SAMPLE_TYPE];
+export const FACE_LIVENESS_ACTIONS = ["BLINK", "SMILE", "TURN_LEFT", "TURN_RIGHT", "NOD"];
+export const FACE_CHALLENGE_ACTIONS = [...FACE_LIVENESS_ACTIONS, "CAPTURE"];
+export const FACE_VERIFICATION_MODES = ["LIVENESS", "CAPTURE"];
 export const RECORD_STATUSES = ["PENDING", "PRESENT", "LATE", "ABSENT", "EXCUSED", "REVIEW", "REJECTED"];
+
+export const hasUsableFaceSampleSet = (samples = []) => {
+  if (!Array.isArray(samples)) return false;
+  const types = samples.map((sample) => String(sample?.sampleType || "").trim().toUpperCase());
+  if (types.length === 1 && types[0] === PROFILE_AVATAR_SAMPLE_TYPE) return true;
+  return types.length >= REQUIRED_SAMPLE_TYPES.length
+    && types.length <= REQUIRED_SAMPLE_TYPES.length + 1
+    && new Set(types).size === types.length
+    && REQUIRED_SAMPLE_TYPES.every((type) => types.includes(type))
+    && types.every((type) => FACE_SAMPLE_TYPES.includes(type) && type !== PROFILE_AVATAR_SAMPLE_TYPE);
+};
+
+export const getFaceEnrollmentMethod = (samples = []) => {
+  if (!hasUsableFaceSampleSet(samples)) return null;
+  return String(samples[0]?.sampleType || "").trim().toUpperCase() === PROFILE_AVATAR_SAMPLE_TYPE
+    ? PROFILE_AVATAR_SAMPLE_TYPE
+    : "CAMERA_3_POSE";
+};
 
 export const toIso = (value) => (value ? new Date(value).toISOString() : null);
 
@@ -94,9 +115,11 @@ export const getAttemptExpiry = (attempt, maxAttemptSeconds) => {
   return new Date(startedAt.getTime() + maxAttemptSeconds * 1000);
 };
 
-export const issueFaceChallenge = async (tx, sessionId, attemptId, now) => {
+export const issueFaceChallenge = async (tx, sessionId, attemptId, now, mode = "LIVENESS") => {
   const nonce = crypto.randomBytes(32).toString("base64url");
-  const faceAction = FACE_CHALLENGE_ACTIONS[crypto.randomInt(0, FACE_CHALLENGE_ACTIONS.length)];
+  const faceAction = mode === "CAPTURE"
+    ? "CAPTURE"
+    : FACE_LIVENESS_ACTIONS[crypto.randomInt(0, FACE_LIVENESS_ACTIONS.length)];
   const expiresAt = new Date(now.getTime() + FACE_CHALLENGE_TTL_SECONDS * 1000);
   await tx.attendanceSessionChallenge.create({
     data: {

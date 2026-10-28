@@ -2,7 +2,8 @@ import prisma from "../../config/prisma.js";
 import { encryptFaceEmbedding } from "./face-embedding.crypto.js";
 import {
   addAuditLog, badRequest, conflict, FACE_SAMPLE_TYPES, getRetentionDays,
-  normalizeEmbedding, notFound, parseDateTime, parseId, REQUIRED_SAMPLE_TYPES, toIso,
+  getFaceEnrollmentMethod, hasUsableFaceSampleSet, normalizeEmbedding, notFound,
+  parseDateTime, parseId, PROFILE_AVATAR_SAMPLE_TYPE, REQUIRED_SAMPLE_TYPES, toIso,
 } from "./attendance.checkin.shared.js";
 
 export const getStudentSessionDetail = async (studentId, rawSessionId) => {
@@ -29,14 +30,14 @@ export const getStudentSessionDetail = async (studentId, rawSessionId) => {
       status: true,
       consentRevokedAt: true,
       retentionExpiresAt: true,
-      samples: { where: { isActive: true }, select: { id: true } },
+      samples: { where: { isActive: true }, select: { sampleType: true } },
     },
   });
   const now = new Date();
   const faceReady = faceProfile?.status === "ACTIVE"
     && !faceProfile.consentRevokedAt
     && (!faceProfile.retentionExpiresAt || faceProfile.retentionExpiresAt > now)
-    && faceProfile.samples.length >= 3;
+    && hasUsableFaceSampleSet(faceProfile.samples);
   return {
     sessionId: session.id,
     // The student must match this session when several teacher phones are advertising nearby.
@@ -63,6 +64,7 @@ export const getStudentSessionDetail = async (studentId, rawSessionId) => {
       && (!session.config?.requireFace || faceReady),
     faceProfileRequired: Boolean(session.config?.requireFace),
     faceProfileReady: faceReady,
+    faceLivenessRequired: session.config?.faceLivenessRequired !== false,
     bleMinScanCount: session.config?.bleMinScanCount || 1,
     bleScanDurationSeconds: session.config?.bleScanDurationSeconds || 0,
   };
@@ -133,8 +135,8 @@ export const recordFaceConsent = async (studentId, body = {}) => {
 
 export const enrollFaceProfile = async (studentId, body = {}) => {
   const samples = body.samples;
-  if (!Array.isArray(samples) || samples.length < 3 || samples.length > 4) {
-    throw badRequest("samples must contain three required poses and at most one EXTRA sample");
+  if (!Array.isArray(samples) || samples.length < 1 || samples.length > 4) {
+    throw badRequest("samples must contain one profile avatar or three required poses and at most one EXTRA sample");
   }
 
   const normalized = samples.map((sample, index) => {
@@ -168,9 +170,13 @@ export const enrollFaceProfile = async (studentId, body = {}) => {
   });
 
   const sampleTypes = normalized.map((sample) => sample.sampleType);
-  if (new Set(sampleTypes).size !== sampleTypes.length
-      || REQUIRED_SAMPLE_TYPES.some((required) => !sampleTypes.includes(required))) {
-    throw badRequest("Enrollment must contain exactly one FRONT, LEFT and RIGHT sample, with at most one EXTRA");
+  const isAvatarEnrollment = sampleTypes.length === 1 && sampleTypes[0] === PROFILE_AVATAR_SAMPLE_TYPE;
+  const isCameraEnrollment = sampleTypes.length >= REQUIRED_SAMPLE_TYPES.length
+    && sampleTypes.length <= REQUIRED_SAMPLE_TYPES.length + 1
+    && REQUIRED_SAMPLE_TYPES.every((required) => sampleTypes.includes(required))
+    && !sampleTypes.includes(PROFILE_AVATAR_SAMPLE_TYPE);
+  if (new Set(sampleTypes).size !== sampleTypes.length || (!isAvatarEnrollment && !isCameraEnrollment)) {
+    throw badRequest("Enrollment must contain only PROFILE_AVATAR or FRONT, LEFT, RIGHT and optionally EXTRA");
   }
   const modelName = normalized[0].modelName;
   const modelVersion = normalized[0].modelVersion;
@@ -187,13 +193,19 @@ export const enrollFaceProfile = async (studentId, body = {}) => {
   const enrollment = await prisma.$transaction(async (tx) => {
     const current = await tx.faceProfile.findUnique({
       where: { userId: studentId },
-      include: { samples: { where: { isActive: true }, select: { id: true } } },
+      include: { samples: { where: { isActive: true }, select: { id: true, sampleType: true } } },
     });
     if (current?.status === "ACTIVE"
         && current.modelName === modelName
         && current.modelVersion === modelVersion
-        && current.samples.length === normalized.length) {
-      return { profile: current, sampleCount: current.samples.length, idempotent: true };
+        && current.samples.length === normalized.length
+        && current.samples.every((sample) => sampleTypes.includes(sample.sampleType))) {
+      return {
+        profile: current,
+        sampleCount: current.samples.length,
+        enrollmentMethod: getFaceEnrollmentMethod(current.samples),
+        idempotent: true,
+      };
     }
     if (!current || current.status !== "PENDING" || !current.consentAt || current.consentRevokedAt) {
       throw conflict("FACE_CONSENT_REQUIRED", "Cần ghi nhận đồng ý trước khi đăng ký khuôn mặt");
@@ -236,9 +248,21 @@ export const enrollFaceProfile = async (studentId, body = {}) => {
       action: "ENROLL_FACE",
       entityType: "FaceProfile",
       entityId: current.id,
-      metadata: { stage: "ENROLLED", sampleCount: encryptedSamples.length, modelName, modelVersion, dimension },
+      metadata: {
+        stage: "ENROLLED",
+        sampleCount: encryptedSamples.length,
+        enrollmentMethod: isAvatarEnrollment ? PROFILE_AVATAR_SAMPLE_TYPE : "CAMERA_3_POSE",
+        modelName,
+        modelVersion,
+        dimension,
+      },
     });
-    return { profile: updated, sampleCount: encryptedSamples.length, idempotent: false };
+    return {
+      profile: updated,
+      sampleCount: encryptedSamples.length,
+      enrollmentMethod: isAvatarEnrollment ? PROFILE_AVATAR_SAMPLE_TYPE : "CAMERA_3_POSE",
+      idempotent: false,
+    };
   });
 
   const profile = enrollment.profile;
@@ -247,6 +271,7 @@ export const enrollFaceProfile = async (studentId, body = {}) => {
     sampleCount: enrollment.sampleCount,
     modelName: profile.modelName,
     modelVersion: profile.modelVersion,
+    enrollmentMethod: enrollment.enrollmentMethod,
     dimension,
     enrolledAt: toIso(profile.enrolledAt),
     retentionExpiresAt: toIso(profile.retentionExpiresAt),

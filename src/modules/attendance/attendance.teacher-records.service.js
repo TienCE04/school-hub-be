@@ -29,6 +29,37 @@ export const getTeacherSessionRecords = async (user, rawSessionId, query = {}) =
           take: 1,
           include: { reviewer: { select: { id: true, name: true } } },
         },
+        attempts: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            bleEvidence: {
+              select: {
+                rssiMin: true,
+                rssiMax: true,
+                rssiAverage: true,
+                scanCount: true,
+                scanDurationMs: true,
+                status: true,
+                verifiedAt: true,
+                failureReason: true,
+              },
+            },
+            faceVerification: {
+              select: {
+                challengeType: true,
+                similarityScore: true,
+                qualityScore: true,
+                modelName: true,
+                modelVersion: true,
+                embeddingDimension: true,
+                status: true,
+                processedAt: true,
+                failureReason: true,
+              },
+            },
+          },
+        },
       },
     }),
     prisma.attendanceRecord.groupBy({
@@ -65,6 +96,9 @@ export const getTeacherSessionRecords = async (user, rawSessionId, query = {}) =
     records: records.map((record) => {
       const snapshot = snapshots.get(record.studentId);
       const review = record.reviews[0] || null;
+      const attempt = record.attempts[0] || null;
+      const bleEvidence = attempt?.bleEvidence || null;
+      const faceVerification = attempt?.faceVerification || null;
       return {
         id: record.id,
         recordId: record.id,
@@ -79,6 +113,27 @@ export const getTeacherSessionRecords = async (user, rawSessionId, query = {}) =
         reviewedAt: toIso(record.reviewedAt),
         reviewedBy: review?.reviewer?.name || null,
         reviewNote: record.reviewNote || null,
+        bleEvidence: bleEvidence ? {
+          rssiMin: bleEvidence.rssiMin,
+          rssiMax: bleEvidence.rssiMax,
+          rssiAverage: bleEvidence.rssiAverage,
+          scanCount: bleEvidence.scanCount,
+          scanDurationMs: bleEvidence.scanDurationMs,
+          status: bleEvidence.status,
+          verifiedAt: toIso(bleEvidence.verifiedAt),
+          failureReason: bleEvidence.failureReason,
+        } : null,
+        faceVerification: faceVerification ? {
+          challengeType: faceVerification.challengeType,
+          similarityScore: faceVerification.similarityScore,
+          qualityScore: faceVerification.qualityScore,
+          modelName: faceVerification.modelName,
+          modelVersion: faceVerification.modelVersion,
+          embeddingDimension: faceVerification.embeddingDimension,
+          status: faceVerification.status,
+          processedAt: toIso(faceVerification.processedAt),
+          failureReason: faceVerification.failureReason,
+        } : null,
       };
     }),
     page,

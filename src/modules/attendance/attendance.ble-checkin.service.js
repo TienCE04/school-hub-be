@@ -2,13 +2,17 @@ import prisma from "../../config/prisma.js";
 import { hashToken } from "../../shared/utils/hash.js";
 import {
   badRequest, conflict, getAttemptExpiry, getStudentAttempt, issueFaceChallenge,
-  markAttemptRejected, parseDateTime, parseId, toIso,
+  FACE_VERIFICATION_MODES, markAttemptRejected, parseDateTime, parseId, toIso,
 } from "./attendance.checkin.shared.js";
 
 export const submitBleEvidence = async (studentId, rawAttemptId, body = {}) => {
   const attemptId = parseId(rawAttemptId, "attemptId");
   const advertisedSessionCode = String(body.advertisedSessionCode || "").trim().toUpperCase();
   const token = String(body.token || "").trim();
+  const faceVerificationMode = String(body.faceVerificationMode || "LIVENESS").trim().toUpperCase();
+  if (!FACE_VERIFICATION_MODES.includes(faceVerificationMode)) {
+    throw badRequest("faceVerificationMode must be LIVENESS or CAPTURE");
+  }
   const scanCount = Number(body.scanCount);
   const scanDurationMs = Number(body.scanDurationMs);
   if (!/^[A-F0-9]{16}$/.test(advertisedSessionCode)) throw badRequest("advertisedSessionCode is invalid");
@@ -38,6 +42,9 @@ export const submitBleEvidence = async (studentId, rawAttemptId, body = {}) => {
     const attempt = await getStudentAttempt(tx, studentId, attemptId);
     const session = attempt.record.session;
     const record = attempt.record;
+    if (faceVerificationMode === "CAPTURE" && session.config?.faceLivenessRequired !== false) {
+      throw conflict("FACE_CAPTURE_MODE_DISABLED", "Phiên này yêu cầu xác minh liveness");
+    }
     if (attempt.status === "VERIFIED" || attempt.status === "PENDING_REVIEW") {
       return { attemptId, status: attempt.status, nextStep: "VIEW_RESULT" };
     }
@@ -71,6 +78,10 @@ export const submitBleEvidence = async (studentId, rawAttemptId, body = {}) => {
         orderBy: { issuedAt: "desc" },
       });
       if (previousChallenge) {
+        const previousMode = previousChallenge.faceAction === "CAPTURE" ? "CAPTURE" : "LIVENESS";
+        if (previousMode !== faceVerificationMode) {
+          throw conflict("FACE_MODE_ALREADY_SELECTED", "Lần thử này đã có một phương thức xác minh đang chờ");
+        }
         return {
           attemptId,
           status: "BLE_VERIFIED",
@@ -82,7 +93,7 @@ export const submitBleEvidence = async (studentId, rawAttemptId, body = {}) => {
           },
         };
       }
-      const renewedChallenge = await issueFaceChallenge(tx, session.id, attemptId, now);
+      const renewedChallenge = await issueFaceChallenge(tx, session.id, attemptId, now, faceVerificationMode);
       return { attemptId, status: "BLE_VERIFIED", nextStep: "FACE_VERIFICATION", faceChallenge: renewedChallenge };
     }
 
@@ -173,7 +184,7 @@ export const submitBleEvidence = async (studentId, rawAttemptId, body = {}) => {
       where: { id: attemptId },
       data: { status: "VERIFYING", submittedAt: now, serverReceivedAt: now },
     });
-    const faceChallenge = await issueFaceChallenge(tx, session.id, attemptId, now);
+    const faceChallenge = await issueFaceChallenge(tx, session.id, attemptId, now, faceVerificationMode);
     return { attemptId, status: "BLE_VERIFIED", nextStep: "FACE_VERIFICATION", faceChallenge };
   });
 };

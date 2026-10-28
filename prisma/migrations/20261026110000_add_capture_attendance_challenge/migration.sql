@@ -1,0 +1,1 @@
+ALTER TYPE "AttendanceChallengeType" ADD VALUE IF NOT EXISTS 'CAPTURE';

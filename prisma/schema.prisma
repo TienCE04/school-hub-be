@@ -693,6 +693,7 @@ enum AttendanceChallengeType {
   TURN_LEFT
   TURN_RIGHT
   NOD
+  CAPTURE
 }
 
 enum FaceProfileStatus {
