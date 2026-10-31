@@ -34,5 +34,7 @@ export const SOCKET_EVENTS = {
   MEMBER_ADDED: 'member_added',
   MEMBER_REMOVED: 'member_removed',
 
+  ATTENDANCE_RECORDS_CHANGED: 'attendance_records_changed',
+
   NOTIFICATION_RECEIVED: 'notification_received',
 };

@@ -5,7 +5,7 @@ import prisma from './config/prisma.js';
 
 import { initSocket } from './realtime/gateway/index.js';
 import { initFirebase } from './config/firebase.js';
-import { finalizeExpiredAttendanceSessions } from './modules/attendance/attendance.service.js';
+import { finalizeExpiredAttendanceSessions, startDueAttendanceSessions } from './modules/attendance/attendance.service.js';
 import {
   purgeExpiredAttendanceFaceEvidence,
   purgeExpiredFaceProfiles,
@@ -27,6 +27,22 @@ async function startServer() {
 
     // Initialize Firebase Admin
     initFirebase();
+
+    let startingScheduledSessions = false;
+    const startScheduledSessions = async () => {
+      if (startingScheduledSessions) return;
+      startingScheduledSessions = true;
+      try {
+        await startDueAttendanceSessions();
+      } catch (error) {
+        console.error("Scheduled attendance start failed:", error);
+      } finally {
+        startingScheduledSessions = false;
+      }
+    };
+    startScheduledSessions();
+    const attendanceStartTimer = setInterval(startScheduledSessions, 5_000);
+    attendanceStartTimer.unref();
 
     const finalizeExpiredSessions = () => {
       finalizeExpiredAttendanceSessions().catch((error) => {

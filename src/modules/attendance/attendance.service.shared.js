@@ -114,6 +114,7 @@ export const toTeacherSessionDto = (session) => ({
     bleScanDurationSeconds: session.config.bleScanDurationSeconds,
   } : null,
   participantCount: session._count?.participants ?? session.participantCount ?? 0,
+  countCheckIn: session.countCheckIn ?? 0,
 });
 
 export const parseOptionalInt = (value, fieldName) => {

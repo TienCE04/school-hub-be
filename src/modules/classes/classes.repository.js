@@ -405,6 +405,8 @@ export const findClassesByUserId = (userId) => {
             select: {
               id: true,
               title: true,
+              startTime: true,
+              endTime: true,
             },
           },
           leaveRequests: {

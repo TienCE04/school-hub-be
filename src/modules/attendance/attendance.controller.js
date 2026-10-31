@@ -1,5 +1,6 @@
 import * as service from "./attendance.service.js";
 import * as checkinService from "./attendance.checkin.service.js";
+import { notifyAttendanceRecordsChanged } from "./attendance.realtime.js";
 
 const sendError = (res, error) => {
   const statusCode = error.statusCode || 500;
@@ -77,6 +78,7 @@ export const createTeacherSession = async (req, res) => {
 export const startTeacherSession = async (req, res) => {
   try {
     const result = await service.startTeacherSession(req.user, req.params.sessionId);
+    await notifyAttendanceRecordsChanged({ sessionId: req.params.sessionId });
     return res.status(200).json(result);
   } catch (error) {
     return sendError(res, error);
@@ -95,6 +97,7 @@ export const rotateTeacherSessionBleToken = async (req, res) => {
 export const endTeacherSession = async (req, res) => {
   try {
     const result = await service.endTeacherSession(req.user, req.params.sessionId);
+    await notifyAttendanceRecordsChanged({ sessionId: req.params.sessionId });
     return res.status(200).json(result);
   } catch (error) {
     return sendError(res, error);
@@ -140,6 +143,7 @@ export const revokeFaceConsent = async (req, res) => {
 export const createStudentAttendanceAttempt = async (req, res) => {
   try {
     const result = await checkinService.createStudentAttendanceAttempt(req.user.id, req.params.sessionId, req.body);
+    await notifyAttendanceRecordsChanged({ sessionId: req.params.sessionId });
     return res.status(result.idempotent ? 200 : 201).json(result);
   } catch (error) {
     return sendError(res, error);
@@ -149,6 +153,7 @@ export const createStudentAttendanceAttempt = async (req, res) => {
 export const cancelStudentAttendanceAttempt = async (req, res) => {
   try {
     const result = await checkinService.cancelStudentAttendanceAttempt(req.user.id, req.params.attemptId);
+    await notifyAttendanceRecordsChanged({ attemptId: req.params.attemptId });
     return res.status(200).json(result);
   } catch (error) {
     return sendError(res, error);
@@ -158,6 +163,7 @@ export const cancelStudentAttendanceAttempt = async (req, res) => {
 export const submitBleEvidence = async (req, res) => {
   try {
     const result = await checkinService.submitBleEvidence(req.user.id, req.params.attemptId, req.body);
+    await notifyAttendanceRecordsChanged({ attemptId: req.params.attemptId });
     return res.status(200).json(result);
   } catch (error) {
     return sendError(res, error);
@@ -167,6 +173,7 @@ export const submitBleEvidence = async (req, res) => {
 export const submitFaceEvidence = async (req, res) => {
   try {
     const result = await checkinService.submitFaceEvidence(req.user.id, req.params.attemptId, req.body);
+    await notifyAttendanceRecordsChanged({ attemptId: req.params.attemptId });
     return res.status(200).json(result);
   } catch (error) {
     return sendError(res, error);
@@ -194,7 +201,34 @@ export const getTeacherSessionDetail = async (req, res) => {
 export const reviewAttendanceRecord = async (req, res) => {
   try {
     const result = await checkinService.reviewAttendanceRecord(req.user, req.params.recordId, req.body);
+    await notifyAttendanceRecordsChanged({ recordId: req.params.recordId });
     return res.status(200).json(result);
+  } catch (error) {
+    return sendError(res, error);
+  }
+};
+
+export const getTeacherClassStudentStats = async (req, res) => {
+  try {
+    return res.json(await checkinService.getTeacherClassStudentStats(req.user, req.params.classId));
+  } catch (error) {
+    return sendError(res, error);
+  }
+};
+
+export const getTeacherStudentRecords = async (req, res) => {
+  try {
+    return res.json(await checkinService.getTeacherStudentRecords(req.user, req.params.classId, req.params.studentId));
+  } catch (error) {
+    return sendError(res, error);
+  }
+};
+
+export const manualCheckInAttendanceRecord = async (req, res) => {
+  try {
+    const result = await checkinService.manualCheckInAttendanceRecord(req.user, req.params.recordId, req.body);
+    await notifyAttendanceRecordsChanged({ recordId: req.params.recordId });
+    return res.json(result);
   } catch (error) {
     return sendError(res, error);
   }

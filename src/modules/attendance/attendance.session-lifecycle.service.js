@@ -1,4 +1,5 @@
 import prisma from "../../config/prisma.js";
+import { notifyAttendanceRecordsChanged } from "./attendance.realtime.js";
 import { hashToken } from "../../shared/utils/hash.js";
 import {
   addAuditLog, assertSessionManager, BLE_TOKEN_ROTATE_SECONDS, conflict, createBleToken,
@@ -57,7 +58,7 @@ export const startTeacherSession = async (user, rawSessionId) => {
     if (!["DRAFT", "SCHEDULED"].includes(session.status)) {
       throw conflict("SESSION_NOT_STARTABLE", "Phiên điểm danh không ở trạng thái có thể bắt đầu");
     }
-    if (session.startsAt > now) {
+    if (session.status === "SCHEDULED" && (!session.startsAt || session.startsAt > now)) {
       throw conflict("SESSION_STARTS_LATER", "Chưa đến thời gian bắt đầu phiên điểm danh");
     }
     if (session.expiresAt <= now) {
@@ -69,7 +70,7 @@ export const startTeacherSession = async (user, rawSessionId) => {
 
     const claimed = await tx.attendanceSession.updateMany({
       where: { id: sessionId, status: { in: ["DRAFT", "SCHEDULED"] } },
-      data: { status: "ACTIVE" },
+      data: { status: "ACTIVE", ...(session.status === "DRAFT" ? { startsAt: now } : {}) },
     });
     if (claimed.count !== 1) {
       throw conflict("SESSION_NOT_STARTABLE", "Phiên điểm danh đã được xử lý ở nơi khác");
@@ -256,6 +257,40 @@ export const endTeacherSession = async (user, rawSessionId) => {
   });
   return { sessionId, ...result };
 };
+
+const scheduledStartRetries = new Map();
+
+// Scheduled sessions start on the server even if the teacher's screen is closed.
+// startTeacherSession claims the DRAFT/SCHEDULED row atomically inside its transaction.
+export const startDueAttendanceSessions = async () => {
+  const now = new Date();
+  const sessions = await prisma.attendanceSession.findMany({
+    where: { status: "SCHEDULED", startsAt: { lte: now }, expiresAt: { gt: now } },
+    select: { id: true, teacherId: true },
+  });
+  const dueIds = new Set(sessions.map((session) => session.id));
+  for (const id of scheduledStartRetries.keys()) {
+    if (!dueIds.has(id)) scheduledStartRetries.delete(id);
+  }
+  for (const session of sessions) {
+    const previousFailure = scheduledStartRetries.get(session.id);
+    if (previousFailure && previousFailure.retryAt > now.getTime()) continue;
+    try {
+      await startTeacherSession({ id: session.teacherId, role: "TEACHER" }, session.id);
+      scheduledStartRetries.delete(session.id);
+      await notifyAttendanceRecordsChanged({ sessionId: session.id });
+    } catch (error) {
+      if (error.code === "SESSION_NOT_STARTABLE") {
+        scheduledStartRetries.delete(session.id);
+      } else {
+        scheduledStartRetries.set(session.id, { retryAt: Date.now() + 60_000, code: error.code });
+        if (previousFailure && previousFailure.code === error.code) continue;
+        console.error(`Unable to start scheduled attendance session ${session.id}:`, error);
+      }
+    }
+  }
+};
+
 export const finalizeExpiredAttendanceSessions = async () => {
   const now = new Date();
   const expired = await prisma.attendanceSession.findMany({
@@ -270,7 +305,10 @@ export const finalizeExpiredAttendanceSessions = async () => {
       if (!session || session.status !== "ACTIVE" || session.expiresAt > now) return false;
       return (await finalizeAttendanceSession(tx, session, null, "SESSION_EXPIRED")).finalized;
     });
-    if (finalized) finalizedCount += 1;
+    if (finalized) {
+      finalizedCount += 1;
+      await notifyAttendanceRecordsChanged({ sessionId: id });
+    }
   }
   return finalizedCount;
 };

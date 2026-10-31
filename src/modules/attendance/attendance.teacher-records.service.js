@@ -19,7 +19,7 @@ export const getTeacherSessionRecords = async (user, rawSessionId, query = {}) =
     prisma.attendanceRecord.count({ where }),
     prisma.attendanceRecord.findMany({
       where,
-      orderBy: [{ status: "asc" }, { studentId: "asc" }],
+      orderBy: [{ studentId: "asc" }, { id: "asc" }],
       skip: (page - 1) * limit,
       take: limit,
       include: {
@@ -255,5 +255,41 @@ export const reviewAttendanceRecord = async (user, rawRecordId, body = {}) => {
       reviewedAt: toIso(now),
       reviewNote: note,
     };
+  });
+};
+
+export const manualCheckInAttendanceRecord = async (user, rawRecordId, body = {}) => {
+  const recordId = parseId(rawRecordId, "recordId");
+  const note = String(body.note || "").trim() || "Điểm danh thủ công";
+  if (note.length > 500) throw badRequest("note must be at most 500 characters");
+  const now = new Date();
+  return prisma.$transaction(async (tx) => {
+    const record = await tx.attendanceRecord.findUnique({ where: { id: recordId } });
+    if (!record) throw notFound("Không tìm thấy record điểm danh");
+    const session = await getSessionManager(tx, user, record.sessionId);
+    if (!["ACTIVE", "ENDED"].includes(session.status)) {
+      throw conflict("SESSION_NOT_CHECKINABLE", "Phiên chưa bắt đầu hoặc đã hủy");
+    }
+    if (!["PENDING", "ABSENT"].includes(record.status)) {
+      throw conflict("RECORD_NOT_CHECKINABLE", "Chỉ có thể điểm danh thủ công sinh viên chưa điểm danh");
+    }
+    const updated = await tx.attendanceRecord.updateMany({
+      where: { id: recordId, status: record.status },
+      data: { status: "PRESENT", source: "MANUAL", checkedInAt: now, reviewedById: user.id, reviewedAt: now, reviewNote: note },
+    });
+    if (updated.count !== 1) throw conflict("RECORD_ALREADY_UPDATED", "Record đã được xử lý ở nơi khác");
+    await tx.attendanceReview.create({ data: {
+      recordId, reviewerId: user.id, decision: "MARK_PRESENT", note,
+      previousStatus: record.status, newStatus: "PRESENT",
+      previousVerificationStatus: record.verificationStatus, newVerificationStatus: record.verificationStatus,
+      reasonCode: "MANUAL_CHECK_IN",
+    } });
+    await addAuditLog(tx, {
+      actorId: user.id, sessionId: record.sessionId, action: "REVIEW_RECORD",
+      entityType: "AttendanceRecord", entityId: recordId,
+      metadata: { decision: "MARK_PRESENT", previousStatus: record.status, newStatus: "PRESENT", reasonCode: "MANUAL_CHECK_IN" },
+    });
+    return { recordId, studentId: record.studentId, status: "PRESENT", verificationStatus: record.verificationStatus,
+      reviewedById: user.id, reviewedAt: toIso(now), reviewNote: note };
   });
 };

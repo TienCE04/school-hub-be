@@ -21,10 +21,13 @@ router.get("/my/devices", authenticate, authorize(["TEACHER"]), controller.getMy
 router.delete("/devices/:deviceId", authenticate, authorize(["TEACHER", "ADMIN"]), controller.revokeTeacherDevice);
 
 router.get("/classes/:classId/sessions", authenticate, authorize(["TEACHER", "ADMIN"]), controller.getTeacherClassSessions);
+router.get("/classes/:classId/students", authenticate, authorize(["TEACHER", "ADMIN"]), controller.getTeacherClassStudentStats);
+router.get("/classes/:classId/students/:studentId/records", authenticate, authorize(["TEACHER", "ADMIN"]), controller.getTeacherStudentRecords);
 router.post("/classes/:classId/sessions", authenticate, authorize(["TEACHER"]), controller.createTeacherSession);
 router.get("/sessions/:sessionId", authenticate, authorize(["TEACHER", "ADMIN"]), controller.getTeacherSessionDetail);
 router.get("/sessions/:sessionId/records", authenticate, authorize(["TEACHER", "ADMIN"]), controller.getTeacherSessionRecords);
 router.patch("/records/:recordId/review", authenticate, authorize(["TEACHER", "ADMIN"]), controller.reviewAttendanceRecord);
+router.patch("/records/:recordId/manual-check-in", authenticate, authorize(["TEACHER", "ADMIN"]), controller.manualCheckInAttendanceRecord);
 router.post("/sessions/:sessionId/start", authenticate, authorize(["TEACHER", "ADMIN"]), controller.startTeacherSession);
 router.post("/sessions/:sessionId/ble-token", authenticate, authorize(["TEACHER", "ADMIN"]), controller.rotateTeacherSessionBleToken);
 router.post("/sessions/:sessionId/end", authenticate, authorize(["TEACHER", "ADMIN"]), controller.endTeacherSession);

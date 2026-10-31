@@ -444,6 +444,8 @@ export const getMyClasses = async (userId) => {
       studentCount,
       subjectId: subject?.id || null,
       subjectName: subject?.title || null,
+      subjectStartTime: subject?.startTime || null,
+      subjectEndTime: subject?.endTime || null,
       pendingAttendanceReviewCount: leaveRequests ? leaveRequests.length : 0,
       joinedAt: m.joinedAt,
     };

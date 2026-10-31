@@ -1,18 +1,19 @@
 import crypto from "node:crypto";
 import prisma from "../../config/prisma.js";
+import { resolveSessionTiming } from "./attendance.session-timing.js";
 import {
   addAuditLog, assertClassManager, badRequest, notFound, parseAttendanceDate,
-  parseDate, parseDateTime, parseOptionalInt, parseRequiredId, toTeacherSessionDto,
+  parseDate, parseOptionalInt, parseRequiredId, toTeacherSessionDto,
 } from "./attendance.service.shared.js";
 
 export const createTeacherSession = async (user, rawClassId, body = {}) => {
   const classId = parseRequiredId(rawClassId, "classId");
-  const subjectId = parseOptionalInt(body.subjectId, "subjectId");
+  const requestedSubjectId = parseOptionalInt(body.subjectId, "subjectId");
   const deviceId = parseRequiredId(body.deviceId, "deviceId");
-  const attendanceDate = parseAttendanceDate(body.attendanceDate);
-  const startsAt = parseDateTime(body.startsAt, "startsAt");
-  const expiresAt = parseDateTime(body.expiresAt, "expiresAt");
-  if (startsAt >= expiresAt) throw badRequest("expiresAt must be after startsAt");
+  const startMode = body.startMode;
+  if (!["MANUAL", "SCHEDULED"].includes(startMode)) {
+    throw badRequest("startMode must be MANUAL or SCHEDULED");
+  }
 
   if (body.config !== undefined && (!body.config || typeof body.config !== "object" || Array.isArray(body.config))) {
     throw badRequest("config must be an object");
@@ -52,15 +53,19 @@ export const createTeacherSession = async (user, rawClassId, body = {}) => {
   if (!classRow) throw notFound("Không tìm thấy lớp học");
   await assertClassManager(prisma, user, classId);
 
-  if (subjectId !== undefined) {
-    const subject = await prisma.subject.findUnique({
-      where: { id: subjectId },
-      select: { id: true, classId: true },
-    });
-    if (!subject || subject.classId !== classId) {
-      throw badRequest("subjectId must belong to the selected class");
-    }
+  const subject = await prisma.subject.findUnique({
+    where: requestedSubjectId === undefined ? { classId } : { id: requestedSubjectId },
+    select: { id: true, classId: true, startTime: true, endTime: true },
+  });
+  if (!subject || subject.classId !== classId) {
+    throw badRequest("subjectId must belong to the selected class and have a scheduled class time");
   }
+  const subjectId = subject.id;
+  const { startsAt, expiresAt } = resolveSessionTiming(startMode, body.startsAt, subject);
+  const localDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(subject.startTime);
+  const attendanceDate = parseAttendanceDate(localDate);
 
   const device = await prisma.attendanceDevice.findUnique({ where: { id: deviceId } });
   if (!device || device.ownerId !== user.id || device.status !== "ACTIVE") {
@@ -79,7 +84,7 @@ export const createTeacherSession = async (user, rawClassId, body = {}) => {
         attendanceDate,
         startsAt,
         expiresAt,
-        status: "DRAFT",
+        status: startMode === "SCHEDULED" ? "SCHEDULED" : "DRAFT",
         config: {
           create: {
             requireBle,
@@ -110,7 +115,7 @@ export const createTeacherSession = async (user, rawClassId, body = {}) => {
       action: "CREATE_SESSION",
       entityType: "AttendanceSession",
       entityId: session.id,
-      metadata: { classId, subjectId: subjectId ?? null, deviceId },
+      metadata: { classId, subjectId, deviceId, startMode },
     });
     return session;
   });
@@ -141,5 +146,11 @@ export const getTeacherClassSessions = async (user, rawClassId, query = {}) => {
     },
     orderBy: [{ attendanceDate: "desc" }, { startsAt: "desc" }],
   });
-  return sessions.map(toTeacherSessionDto);
+  const counts = sessions.length ? await prisma.attendanceRecord.groupBy({
+    by: ["sessionId"],
+    where: { sessionId: { in: sessions.map((session) => session.id) }, status: { in: ["PRESENT", "LATE"] } },
+    _count: { _all: true },
+  }) : [];
+  const countBySession = new Map(counts.map((count) => [count.sessionId, count._count._all]));
+  return sessions.map((session) => toTeacherSessionDto({ ...session, countCheckIn: countBySession.get(session.id) || 0 }));
 };

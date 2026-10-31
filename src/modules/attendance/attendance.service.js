@@ -4,4 +4,5 @@ export { registerTeacherDevice, getMyTeacherDevices, revokeTeacherDevice } from 
 export { createTeacherSession, getTeacherClassSessions } from "./attendance.teacher-session.service.js";
 export {
   startTeacherSession, rotateTeacherSessionBleToken, endTeacherSession, finalizeExpiredAttendanceSessions,
+  startDueAttendanceSessions,
 } from "./attendance.session-lifecycle.service.js";

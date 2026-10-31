@@ -362,7 +362,7 @@ model AttendanceSession {
   deviceId       Int?
   sessionCode    String                         @unique
   attendanceDate DateTime                       @db.Date
-  startsAt       DateTime
+  startsAt       DateTime?
   expiresAt      DateTime
   endedAt        DateTime?
   status         AttendanceSessionStatus        @default(DRAFT)

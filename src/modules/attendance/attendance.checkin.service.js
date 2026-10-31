@@ -9,7 +9,9 @@ export { submitBleEvidence } from "./attendance.ble-checkin.service.js";
 export { submitFaceEvidence } from "./attendance.face-checkin.service.js";
 export {
   getTeacherSessionRecords, getTeacherSessionDetail, reviewAttendanceRecord,
+  manualCheckInAttendanceRecord,
 } from "./attendance.teacher-records.service.js";
+export { getTeacherClassStudentStats, getTeacherStudentRecords } from "./attendance.teacher-stats.service.js";
 export {
   purgeExpiredFaceProfiles, purgeExpiredAttendanceFaceEvidence,
 } from "./attendance.retention.service.js";
