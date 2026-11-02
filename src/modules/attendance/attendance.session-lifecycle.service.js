@@ -58,8 +58,8 @@ export const startTeacherSession = async (user, rawSessionId) => {
     if (!["DRAFT", "SCHEDULED"].includes(session.status)) {
       throw conflict("SESSION_NOT_STARTABLE", "Phiên điểm danh không ở trạng thái có thể bắt đầu");
     }
-    if (session.status === "SCHEDULED" && (!session.startsAt || session.startsAt > now)) {
-      throw conflict("SESSION_STARTS_LATER", "Chưa đến thời gian bắt đầu phiên điểm danh");
+    if (session.status === "SCHEDULED" && !session.startsAt) {
+      throw conflict("SESSION_START_TIME_MISSING", "Phiên đã lên lịch nhưng thiếu thời gian bắt đầu");
     }
     if (session.expiresAt <= now) {
       throw conflict("SESSION_EXPIRED", "Thời gian của phiên điểm danh đã kết thúc");
@@ -70,7 +70,9 @@ export const startTeacherSession = async (user, rawSessionId) => {
 
     const claimed = await tx.attendanceSession.updateMany({
       where: { id: sessionId, status: { in: ["DRAFT", "SCHEDULED"] } },
-      data: { status: "ACTIVE", ...(session.status === "DRAFT" ? { startsAt: now } : {}) },
+      // `startsAt` becomes the actual opening time. This also makes an early
+      // start of a scheduled session immediately available for student check-in.
+      data: { status: "ACTIVE", startsAt: now },
     });
     if (claimed.count !== 1) {
       throw conflict("SESSION_NOT_STARTABLE", "Phiên điểm danh đã được xử lý ở nơi khác");
@@ -122,7 +124,11 @@ export const startTeacherSession = async (user, rawSessionId) => {
       action: "START_SESSION",
       entityType: "AttendanceSession",
       entityId: sessionId,
-      metadata: { participantCount: roster.length },
+      metadata: {
+        participantCount: roster.length,
+        scheduledStartsAt: session.status === "SCHEDULED" ? toIso(session.startsAt) : null,
+        startedEarly: session.status === "SCHEDULED" && session.startsAt > now,
+      },
     });
 
     return {
