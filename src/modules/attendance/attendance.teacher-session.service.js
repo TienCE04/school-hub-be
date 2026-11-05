@@ -3,7 +3,7 @@ import prisma from "../../config/prisma.js";
 import { resolveSessionTiming } from "./attendance.session-timing.js";
 import {
   addAuditLog, assertClassManager, badRequest, notFound, parseAttendanceDate,
-  parseDate, parseOptionalInt, parseRequiredId, toTeacherSessionDto,
+  parseDate, parseOptionalInt, parseRequiredId, toTeacherSessionDto, getTeacherSessionDisplayStatus,
 } from "./attendance.service.shared.js";
 
 export const createTeacherSession = async (user, rawClassId, body = {}) => {
@@ -35,6 +35,7 @@ export const createTeacherSession = async (user, rawClassId, body = {}) => {
     ? 8
     : Number(config.bleScanDurationSeconds);
   const maxAttemptSeconds = config.maxAttemptSeconds === undefined ? 90 : Number(config.maxAttemptSeconds);
+  const durationMinutes = config.durationMinutes === undefined ? 15 : Number(config.durationMinutes);
 
   if (!Number.isInteger(lateAfterMinutes) || lateAfterMinutes < 0 || lateAfterMinutes > 240) {
     throw badRequest("lateAfterMinutes must be an integer from 0 to 240");
@@ -47,6 +48,9 @@ export const createTeacherSession = async (user, rawClassId, body = {}) => {
   }
   if (!Number.isInteger(maxAttemptSeconds) || maxAttemptSeconds < 10 || maxAttemptSeconds > 180) {
     throw badRequest("maxAttemptSeconds must be an integer from 10 to 180");
+  }
+  if (![15, 20].includes(durationMinutes)) {
+    throw badRequest("durationMinutes must be 15 or 20");
   }
 
   const classRow = await prisma.class.findUnique({ where: { id: classId }, select: { id: true } });
@@ -61,10 +65,11 @@ export const createTeacherSession = async (user, rawClassId, body = {}) => {
     throw badRequest("subjectId must belong to the selected class and have a scheduled class time");
   }
   const subjectId = subject.id;
-  const { startsAt, expiresAt } = resolveSessionTiming(startMode, body.startsAt, subject);
+  const { startsAt, expiresAt } = resolveSessionTiming(startMode, body.startsAt, durationMinutes, subject);
+  const dateSource = startsAt || new Date();
   const localDate = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Ho_Chi_Minh", year: "numeric", month: "2-digit", day: "2-digit",
-  }).format(subject.startTime);
+  }).format(dateSource);
   const attendanceDate = parseAttendanceDate(localDate);
 
   const device = await prisma.attendanceDevice.findUnique({ where: { id: deviceId } });
@@ -98,6 +103,7 @@ export const createTeacherSession = async (user, rawClassId, body = {}) => {
             maxAttemptSeconds,
             bleMinScanCount,
             bleScanDurationSeconds,
+            durationMinutes,
           },
         },
       },
@@ -152,5 +158,10 @@ export const getTeacherClassSessions = async (user, rawClassId, query = {}) => {
     _count: { _all: true },
   }) : [];
   const countBySession = new Map(counts.map((count) => [count.sessionId, count._count._all]));
-  return sessions.map((session) => toTeacherSessionDto({ ...session, countCheckIn: countBySession.get(session.id) || 0 }));
+  const now = new Date();
+  return sessions.map((session) => toTeacherSessionDto({
+    ...session,
+    status: getTeacherSessionDisplayStatus(session, now),
+    countCheckIn: countBySession.get(session.id) || 0,
+  }));
 };

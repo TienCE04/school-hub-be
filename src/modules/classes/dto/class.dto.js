@@ -1,11 +1,14 @@
 
 
 export const createClassDto = (data) => {
-  if (!data.name) throw new Error("Name is required");
+  if (!String(data.name || "").trim()) throw new Error("Name is required");
+  const semesterId = Number(data.semesterId);
+  if (!Number.isSafeInteger(semesterId) || semesterId <= 0) throw new Error("Valid semesterId is required");
   return {
-    name: data.name,
+    name: String(data.name).trim(),
     description: data.description || "",
     code: data.code || undefined,
+    semesterId,
   };
 };
 

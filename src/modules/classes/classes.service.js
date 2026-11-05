@@ -321,6 +321,8 @@ export const getAssignments = async (classCode, page, limit, user) => {
 };
 
 export const createClass = async (data, user) => {
+  const semester = await prisma.semester.findUnique({ where: { id: data.semesterId }, select: { id: true } });
+  if (!semester) throw new Error("Semester not found");
   let code = data.code;
   if (!code) {
     code = await generateUniqueClassCode();
@@ -333,7 +335,7 @@ export const createClass = async (data, user) => {
 
   // Find if there is a Subject with this classCode
   const subject = await prisma.subject.findFirst({
-    where: { classCode: code },
+    where: { classCode: code, semesterId: data.semesterId },
     include: { members: true }
   });
 
@@ -357,23 +359,19 @@ export const createClass = async (data, user) => {
     });
   }
 
-  const newClass = await prisma.class.create({
-    data: {
-      ...restData,
-      code,
-      members: membersToCreate.length > 0 ? {
-        create: membersToCreate
-      } : undefined
-    }
-  });
-
-  // If there is a matching Subject, link the Subject to the newly created Class
-  if (subject) {
-    await prisma.subject.update({
-      where: { id: subject.id },
-      data: { classId: newClass.id }
+  const newClass = await prisma.$transaction(async (tx) => {
+    const createdClass = await tx.class.create({
+      data: {
+        ...restData,
+        code,
+        members: membersToCreate.length > 0 ? { create: membersToCreate } : undefined,
+      },
     });
-  }
+    if (subject) {
+      await tx.subject.update({ where: { id: subject.id }, data: { classId: createdClass.id } });
+    }
+    return createdClass;
+  });
 
   return newClass;
 };
@@ -427,12 +425,13 @@ export const getClassRosterPage = async (classCode, user, page = 1, limit = 20, 
   };
 };
 
-export const getMyClasses = async (userId) => {
-  const memberships = await repo.findClassesByUserId(userId);
+export const getMyClasses = async (userId, semesterId) => {
+  const memberships = await repo.findClassesByUserId(userId, semesterId);
   return memberships.map((m) => {
     const {
       members,
       subject,
+      semester,
       leaveRequests,
       ...classData
     } = m.class;
@@ -443,13 +442,57 @@ export const getMyClasses = async (userId) => {
       membersCount: members ? members.length : 0,
       studentCount,
       subjectId: subject?.id || null,
+      semesterId: m.class.semesterId,
       subjectName: subject?.title || null,
+      subjectSessionCount: countSubjectTeachingWeeks(subject, semester),
       subjectStartTime: subject?.startTime || null,
       subjectEndTime: subject?.endTime || null,
       pendingAttendanceReviewCount: leaveRequests ? leaveRequests.length : 0,
       joinedAt: m.joinedAt,
     };
   });
+};
+
+const countSubjectTeachingWeeks = (subject, semester) => {
+  if (!subject?.startDate || !semester?.startDate || !semester?.endDate || !Array.isArray(semester.weekRanges)) return 0;
+  const toUtcDay = (value) => {
+    const date = new Date(value);
+    return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  };
+  const subjectStart = toUtcDay(subject.startDate);
+  const semesterStart = toUtcDay(semester.startDate);
+  const semesterEnd = toUtcDay(semester.endDate);
+  const ranges = semester.weekRanges
+    .filter((range) => Number.isInteger(range?.startWeek) && Number.isInteger(range?.endWeek))
+    .sort((left, right) => left.startWeek - right.startWeek);
+  if (!ranges.length) return 0;
+
+  const firstWeek = ranges[0].startWeek;
+  let total = 0;
+  for (const range of ranges) {
+    for (let week = range.startWeek; week <= range.endWeek; week += 1) {
+      const occurrence = subjectStart + (week - firstWeek) * 7 * 24 * 60 * 60 * 1000;
+      if (occurrence >= semesterStart && occurrence <= semesterEnd) total += 1;
+    }
+  }
+  return total;
+};
+
+export const getStudentClassesBySemester = async (userId, semesterId) => {
+  const [semester, memberships] = await repo.findStudentClassesBySemester(userId, semesterId);
+  if (!semester) {
+    const error = new Error("Semester not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return {
+    semester: {
+      id: semester.id,
+      semesterName: semester.semesterName,
+    },
+    classes: memberships.map((member) => member.class),
+  };
 };
 
 export const getAllClasses = async (page = 1, limit = 20, search = "") => {
@@ -462,6 +505,7 @@ export const getAllClasses = async (page = 1, limit = 20, search = "") => {
       name: classObj.name,
       description: classObj.description,
       code: classObj.code,
+      semesterId: classObj.semesterId,
       createdAt: classObj.createdAt,
       updatedAt: classObj.updatedAt,
       members: classObj.members.map((member) => ({ ...member.user, joinedAt: member.joinedAt })),
@@ -507,6 +551,16 @@ export const updateClass = async (classId, data, user) => {
     if (!updateData.name) throw new Error("Class name is required");
   }
   if (data.description !== undefined) updateData.description = String(data.description).trim() || null;
+  if (data.semesterId !== undefined) {
+    const semesterId = Number(data.semesterId);
+    if (!Number.isSafeInteger(semesterId) || semesterId <= 0) throw new Error("Invalid semester ID");
+    const semester = await prisma.semester.findUnique({ where: { id: semesterId }, select: { id: true } });
+    if (!semester) throw new Error("Semester not found");
+    if (classObj.subject && classObj.subject.semesterId !== semesterId) {
+      throw new Error("Class semester must match its linked subject");
+    }
+    updateData.semesterId = semesterId;
+  }
   if (data.code !== undefined) {
     updateData.code = String(data.code).trim();
     if (!updateData.code) throw new Error("Class code is required");

@@ -385,11 +385,12 @@ export const findClassMembers = (classId) => {
   });
 };
 
-export const findClassesByUserId = (userId) => {
+export const findClassesByUserId = (userId, semesterId) => {
   return prisma.classMember.findMany({
     where: {
       userId,
       status: "ACTIVE",
+      ...(semesterId ? { class: { is: { semesterId } } } : {}),
     },
     include: {
       class: {
@@ -405,10 +406,14 @@ export const findClassesByUserId = (userId) => {
             select: {
               id: true,
               title: true,
+                startDate: true,
               startTime: true,
               endTime: true,
             },
           },
+            semester: {
+              select: { startDate: true, endDate: true, weekRanges: true },
+            },
           leaveRequests: {
             where: { status: "PENDING" },
             select: { id: true },
@@ -420,6 +425,17 @@ export const findClassesByUserId = (userId) => {
       joinedAt: "desc"
     }
   });
+};
+
+export const findStudentClassesBySemester = (userId, semesterId) => {
+  return Promise.all([
+    prisma.semester.findUnique({ where: { id: semesterId }, select: { id: true, semesterName: true } }),
+    prisma.classMember.findMany({
+      where: { userId, status: "ACTIVE", class: { is: { semesterId } } },
+      select: { class: { select: { id: true, name: true, code: true, description: true } } },
+      orderBy: { class: { name: "asc" } },
+    }),
+  ]);
 };
 
 export const findClassByCode = (code) => {

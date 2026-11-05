@@ -112,10 +112,17 @@ export const toTeacherSessionDto = (session) => ({
     allowManualReview: session.config.allowManualReview,
     bleMinScanCount: session.config.bleMinScanCount,
     bleScanDurationSeconds: session.config.bleScanDurationSeconds,
+    durationMinutes: session.config.durationMinutes,
   } : null,
   participantCount: session._count?.participants ?? session.participantCount ?? 0,
   countCheckIn: session.countCheckIn ?? 0,
 });
+
+export const getTeacherSessionDisplayStatus = (session, now = new Date()) => {
+  if (session.status === "CANCELLED") return "CANCELLED";
+  if (session.status === "ENDED" || session.expiresAt <= now) return "ENDED";
+  return session.status;
+};
 
 export const parseOptionalInt = (value, fieldName) => {
   if (value === undefined || value === null || value === "") return undefined;

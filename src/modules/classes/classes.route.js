@@ -12,6 +12,7 @@ router.put('/:id', authenticate, authorize(['TEACHER', 'ADMIN']), controller.upd
 router.delete('/:id', authenticate, authorize(['ADMIN']), controller.deleteClass);
 router.post('/:id/members/manage', authenticate, authorize(['ADMIN']), controller.manageClassMembers);
 
+router.get('/by-semester/:semesterId', authenticate, authorize(['STUDENT']), controller.getStudentClassesBySemester);
 router.get('/', authenticate, controller.getMyClasses);
 router.post('/join', authenticate, controller.joinClass);
 router.get('/:classCode', authenticate, controller.getClassByCode);

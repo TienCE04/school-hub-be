@@ -89,6 +89,9 @@ export const deleteSemester = async (id) => {
   if (semester && semester.subjects && semester.subjects.length > 0) {
     throw new Error("Cannot delete semester with associated subjects");
   }
+  if (await prisma.class.count({ where: { semesterId: id } })) {
+    throw new Error("Cannot delete semester with associated classes");
+  }
   return repo.deleteSemester(id);
 };
 
@@ -108,6 +111,7 @@ export const addSubjectToSemester = async (semesterId, data) => {
   if (data.classId !== undefined) {
     const classExists = await prisma.class.findUnique({ where: { id: data.classId } });
     if (!classExists) throw new Error("Class not found");
+    if (classExists.semesterId !== semesterId) throw new Error("Class semester must match subject semester");
   }
 
   return repo.addSubjectToSemester(semesterId, data);
@@ -179,6 +183,7 @@ export const updateSubject = async (id, data) => {
   if (data.classId !== undefined && data.classId !== null) {
     const classExists = await prisma.class.findUnique({ where: { id: data.classId } });
     if (!classExists) throw new Error("Class not found");
+    if (classExists.semesterId !== current.semesterId) throw new Error("Class semester must match subject semester");
   }
   await validateSubjectMembers(data.teacherId, data.studentIds || []);
 

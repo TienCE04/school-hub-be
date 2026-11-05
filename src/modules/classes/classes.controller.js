@@ -145,10 +145,33 @@ export const getClassRosterPage = async (req, res) => {
 export const getMyClasses = async (req, res) => {
   try {
     const userId = req.user.id;
-    const result = await service.getMyClasses(userId);
+    const semesterId = req.query.semesterId === undefined ? undefined : Number(req.query.semesterId);
+    if (semesterId !== undefined && (!Number.isSafeInteger(semesterId) || semesterId <= 0)) {
+      return res.status(400).json({ message: "Invalid semester ID" });
+    }
+    const result = await service.getMyClasses(userId, semesterId);
     res.json(result);
   } catch (e) {
     res.status(400).json({ message: e.message });
+  }
+};
+
+export const getStudentClassesBySemester = async (req, res) => {
+  const semesterIdText = String(req.params.semesterId || "");
+  if (!/^\d+$/.test(semesterIdText)) {
+    return res.status(400).json({ message: "Invalid semester ID" });
+  }
+
+  const semesterId = Number(semesterIdText);
+  if (!Number.isSafeInteger(semesterId) || semesterId <= 0) {
+    return res.status(400).json({ message: "Invalid semester ID" });
+  }
+
+  try {
+    const result = await service.getStudentClassesBySemester(req.user.id, semesterId);
+    res.json(result);
+  } catch (e) {
+    res.status(e.statusCode || 400).json({ message: e.message });
   }
 };
 

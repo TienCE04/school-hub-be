@@ -51,7 +51,7 @@ export const startTeacherSession = async (user, rawSessionId) => {
   const result = await prisma.$transaction(async (tx) => {
     const session = await tx.attendanceSession.findUnique({
       where: { id: sessionId },
-      include: { config: true, device: true },
+      include: { config: true, device: true, subject: { select: { endTime: true } } },
     });
     if (!session) throw notFound("Không tìm thấy phiên điểm danh");
     await assertSessionManager(tx, user, session);
@@ -68,11 +68,17 @@ export const startTeacherSession = async (user, rawSessionId) => {
       throw conflict("DEVICE_UNAVAILABLE", "Điện thoại phát BLE không còn hoạt động");
     }
 
+    const durationMinutes = session.config?.durationMinutes || 15;
+    const expiresAt = new Date(now.getTime() + durationMinutes * 60_000);
+    if (!session.subject || expiresAt > session.subject.endTime) {
+      throw conflict("SESSION_DURATION_EXCEEDS_SUBJECT", "Không đủ thời gian cho phiên điểm danh trước khi môn học kết thúc");
+    }
+
     const claimed = await tx.attendanceSession.updateMany({
       where: { id: sessionId, status: { in: ["DRAFT", "SCHEDULED"] } },
       // `startsAt` becomes the actual opening time. This also makes an early
       // start of a scheduled session immediately available for student check-in.
-      data: { status: "ACTIVE", startsAt: now },
+      data: { status: "ACTIVE", startsAt: now, expiresAt },
     });
     if (claimed.count !== 1) {
       throw conflict("SESSION_NOT_STARTABLE", "Phiên điểm danh đã được xử lý ở nơi khác");
@@ -117,7 +123,8 @@ export const startTeacherSession = async (user, rawSessionId) => {
       skipDuplicates: true,
     });
 
-    const bleToken = await issueBleToken(tx, session, now);
+    const activeSession = { ...session, startsAt: now, expiresAt };
+    const bleToken = await issueBleToken(tx, activeSession, now);
     await addAuditLog(tx, {
       actorId: user.id,
       sessionId,

@@ -20,7 +20,7 @@
 | Bảng | Cột chính / mục đích | Quan hệ chính |
 |---|---|---|
 | `User` | `id`, `name`, `email` unique, `studentCode` unique nullable, `password`, `avatar`, `role`, timestamps | Chủ của profile, token, file; thành viên lớp/môn; tác giả post/comment/message; sinh viên điểm danh |
-| `Class` | `id`, `name`, `description`, `code` unique, timestamps | Có members, join requests, posts, subject, files, leave requests, attendance sessions |
+| `Class` | `id`, `name`, `description`, `code` unique, `semesterId` nullable cho dữ liệu cũ, timestamps | Thuộc học kỳ; có members, join requests, posts, subject, files, leave requests, attendance sessions |
 | `ClassMember` | `id`, `userId`, `classId`, `joinedAt`; unique `(userId, classId)` | Bảng nối User–Class |
 | `ClassJoinRequest` | `id`, `userId`, `classId`, `status`, timestamps; unique `(userId, classId)` | Yêu cầu tham gia lớp |
 | `Post` | `id`, `title`, `content`, `type`, `dueDate`, `authorId`, `classId`, timestamps | Bài đăng/thông báo hoặc assignment; có attachments, comments, submissions |
@@ -40,7 +40,7 @@
 
 | Bảng | Cột chính / mục đích | Quan hệ chính |
 |---|---|---|
-| `Semester` | `id`, `semesterName`, `startDate`, `endDate`, `totalWeeks`, `weekRanges` JSON, timestamps | Có nhiều Subject |
+| `Semester` | `id`, `semesterName`, `startDate`, `endDate`, `totalWeeks`, `weekRanges` JSON, timestamps | Có nhiều Class và Subject |
 | `Subject` | `id`, `title`, `subjectCode`, `classCode`, `location`, `startTime`, `endTime`, `startDate`, `classId` nullable unique, `semesterId`, `session` | Thuộc semester; có members; có thể liên kết Class |
 | `SubjectMember` | `id`, `userId`, `subjectId`, `joinedAt`; unique `(userId, subjectId)` | Bảng nối User–Subject |
 
@@ -116,8 +116,9 @@ Schema/migration đã có các bảng dưới đây, nhưng hiện chưa có mod
 
 | Method + path | Quyền | Input | Output |
 |---|---|---|---|
-| `GET /` | Bearer | Không có | Mảng class user đang tham gia, thêm `membersCount`, `joinedAt` |
-| `POST /` | TEACHER/ADMIN | Body `{ name, description?, code? }`; code bỏ trống sẽ tự sinh 6 số | Class mới: các field của `Class` |
+| `GET /` | Bearer | Query `semesterId?` | Mảng class user đang tham gia, lọc theo `Class.semesterId` nếu có; gồm `subjectSessionCount` là số tuần môn được xếp lịch, `membersCount`, `joinedAt` |
+| `GET /by-semester/:semesterId` | STUDENT | Path `semesterId` | `{ semester: { id, semesterName }, classes[] }`; mỗi phần tử là lớp mà sinh viên đang là thành viên ACTIVE trong học kỳ, gồm `id, name, code, description` |
+| `POST /` | TEACHER/ADMIN | Body `{ name, semesterId, description?, code? }`; code bỏ trống sẽ tự sinh 6 số | Class mới: các field của `Class` |
 | `GET /:classCode` | Bearer + member | Path `classCode` | `{ id, name, posts[] }`; post gồm author, attachments, comments |
 | `POST /join` | Bearer | Body `{ code }` | `{ message, classId }`; tạo join request |
 | `GET /:classCode/members` | Bearer + member | Path `classCode` | Mảng member `{ id, name, email, avatar, role, joinedAt }` |
@@ -125,7 +126,7 @@ Schema/migration đã có các bảng dưới đây, nhưng hiện chưa có mod
 | `GET /:classCode/join-requests` | TEACHER/ADMIN của lớp | Path `classCode` | Mảng request pending, kèm user |
 | `POST /:classCode/join-requests/:requestId/handle` | TEACHER/ADMIN của lớp | Body `{ status: "APPROVED" | "REJECTED" }` | `{ message }` |
 | `GET /admin/all` | ADMIN | Query `page?`, `limit?`, `search?` | `{ classes[], total, page, limit, totalPages }`; class có members, subject, counts |
-| `PUT /:id` | ADMIN hoặc teacher của lớp | Body tùy chọn `{ name?, description?, code?, teacherId? }` | Class sau update |
+| `PUT /:id` | ADMIN hoặc teacher của lớp | Body tùy chọn `{ name?, description?, code?, semesterId?, teacherId? }`; học kỳ phải trùng môn đã liên kết | Class sau update |
 | `DELETE /:id` | ADMIN | Path class id | `{ message: "Class deleted successfully" }` |
 | `GET /:id/members/manage` | ADMIN | Query `page?`, `limit?`, `search?` | `{ members[], total, page, limit, totalPages }` |
 | `GET /:id/members/candidates` | ADMIN | Query `search?` | `{ users: [...] }`; nếu search dưới 2 ký tự thì mảng rỗng |
@@ -147,7 +148,7 @@ Schema/migration đã có các bảng dưới đây, nhưng hiện chưa có mod
 | `GET /my` | Bearer | Query `semesterId?` | `{ id, semesterName, semesterStartDate, semesterEndDate, totalWeeks, weekRanges, subjects[] }` theo user |
 | `POST /` | ADMIN | Body `{ semesterName, startDate, endDate, totalWeeks?, weekRanges? }` | Semester mới |
 | `PUT /semesters/:id` | ADMIN | Body partial các field semester | Semester sau update |
-| `DELETE /semesters/:id` | ADMIN | Path semester id | `{ message: "Semester deleted successfully" }`; không xóa được nếu còn subject |
+| `DELETE /semesters/:id` | ADMIN | Path semester id | `{ message: "Semester deleted successfully" }`; không xóa được nếu còn subject hoặc class |
 | `GET /semesters/:semesterId/subjects` | ADMIN | Path semester id | Mảng subject đã serialize, kèm `class`, `teacher`, `students` |
 | `POST /semesters/:semesterId/import` | ADMIN | Body `{ rows: [...] }`; mỗi row cần `studentCode, subjectCode, classCode, title, startDate, startTime, endTime`; có thể có `location, session, teacherEmail` | `{ importedSubjects, importedRows, message }`; tối đa 2.000 rows |
 | `POST /:semesterId/subjects` | ADMIN | Body `{ title, subjectCode, classCode?, location, session, startTime, endTime, startDate, teacherId?, studentIds?, classId? }` | Subject mới |
@@ -211,7 +212,7 @@ Tất cả route trong nhóm này đều yêu cầu Bearer token.
 | `GET /my/devices` | TEACHER | Không có | Danh sách thiết bị do giảng viên hiện tại sở hữu |
 | `DELETE /devices/:deviceId` | TEACHER owner / ADMIN | Path device id | `{ deviceId, status: "REVOKED" }`; không thu hồi nếu đang phát trong phiên ACTIVE |
 | `GET /classes/:classId/sessions` | TEACHER quản lý lớp / ADMIN | `from?`, `to?` | Danh sách phiên trong lớp, kèm môn, thiết bị, cấu hình và số participant |
-| `POST /classes/:classId/sessions` | TEACHER quản lý lớp | `{ subjectId?, attendanceDate, startsAt, expiresAt, deviceId, config? }` | Phiên mới ở trạng thái `DRAFT`, kèm cấu hình đã chuẩn hóa |
+| `POST /classes/:classId/sessions` | TEACHER quản lý lớp | `{ subjectId?, startMode, startsAt?, deviceId, config: { durationMinutes: 15|20, ... } }` | Phiên mới ở trạng thái `DRAFT` hoặc `SCHEDULED`; thời lượng phải kết thúc trước giờ kết thúc môn |
 | `GET /sessions/:sessionId` | TEACHER phụ trách phiên / ADMIN | Path session id | Chi tiết phiên, device/config an toàn và số lượng theo trạng thái |
 | `POST /sessions/:sessionId/start` | TEACHER phụ trách phiên / ADMIN | Path session id | Mở phiên, snapshot roster, tạo record `PENDING`; trả `participantCount` và token BLE ngắn hạn ban đầu |
 | `POST /sessions/:sessionId/ble-token` | TEACHER phụ trách phiên / ADMIN | Path session id | Token BLE mới và thời điểm hết hạn; token cũ bị vô hiệu |

@@ -11,15 +11,16 @@ import {
   purgeExpiredFaceProfiles,
 } from './modules/attendance/attendance.checkin.service.js';
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT || 3000);
+const HOST = process.env.HOST || "0.0.0.0";
 
 async function startServer() {
   try {
     await prisma.$connect();
     console.log(" Connected to database");
 
-    const server = app.listen(PORT, "0.0.0.0", () => {
-      console.log(` Server running on port ${PORT}`);
+    const server = app.listen(PORT, HOST, () => {
+      console.log(` Server listening at http://${HOST}:${PORT}`);
     });
 
     // Initialize socket

@@ -41,6 +41,7 @@ model User {
 
 model Class {
   id                 Int                 @id @default(autoincrement())
+  semesterId         Int?
   name               String
   description        String?
   code               String              @unique
@@ -51,8 +52,11 @@ model Class {
   driveFiles         DriveFile[]
   posts              Post[]
   subject            Subject?
+  semester           Semester?           @relation(fields: [semesterId], references: [id], onDelete: Restrict)
   leaveRequests      LeaveRequest[]
   attendanceSessions AttendanceSession[]
+
+  @@index([semesterId])
 }
 
 model ClassMember {
@@ -196,6 +200,7 @@ model Semester {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   subjects     Subject[]
+  classes      Class[]
 }
 
 model Subject {
@@ -397,6 +402,7 @@ model AttendanceSessionConfig {
   bleRssiThreshold             Int?
   bleMinScanCount              Int               @default(1)
   bleScanDurationSeconds       Int               @default(10)
+  durationMinutes              Int               @default(15)
   faceSimilarityThreshold      Float?
   faceLivenessChallengeSeconds Int               @default(30)
   bleTokenHash                 String?

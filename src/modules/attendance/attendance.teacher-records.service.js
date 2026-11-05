@@ -1,4 +1,5 @@
 import prisma from "../../config/prisma.js";
+import { getTeacherSessionDisplayStatus } from "./attendance.service.shared.js";
 import {
   addAuditLog, badRequest, conflict, getSessionManager, notFound, parseId,
   RECORD_STATUSES, toIso,
@@ -167,7 +168,7 @@ export const getTeacherSessionDetail = async (user, rawSessionId) => {
     startsAt: toIso(session.startsAt),
     expiresAt: toIso(session.expiresAt),
     endedAt: toIso(session.endedAt),
-    status: session.status,
+    status: getTeacherSessionDisplayStatus(session),
     device: session.device ? {
       id: session.device.id,
       name: session.device.name,
@@ -184,6 +185,7 @@ export const getTeacherSessionDetail = async (user, rawSessionId) => {
       allowManualReview: session.config.allowManualReview,
       bleMinScanCount: session.config.bleMinScanCount,
       bleScanDurationSeconds: session.config.bleScanDurationSeconds,
+      durationMinutes: session.config.durationMinutes,
     } : null,
     participantCount: session._count.participants,
     summary,
