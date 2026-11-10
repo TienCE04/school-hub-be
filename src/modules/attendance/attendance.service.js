@@ -8,3 +8,4 @@ export {
   startTeacherSession, rotateTeacherSessionBleToken, endTeacherSession, finalizeExpiredAttendanceSessions,
   startDueAttendanceSessions,
 } from "./attendance.session-lifecycle.service.js";
+export { sendUpcomingAttendanceReminders } from "./attendance.reminder.service.js";

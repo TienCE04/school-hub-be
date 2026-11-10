@@ -74,6 +74,8 @@ export const createTeacherSession = async (user, rawClassId, body = {}) => {
   }
   const subjectId = subject.id;
   const { startsAt, expiresAt } = resolveSessionTiming(startMode, body.startsAt, durationMinutes, subject);
+  const reminderAt = startsAt || getSubjectLessonWindows(subject)
+    .find((window) => window.startsAt > new Date())?.startsAt || null;
   const dateSource = startsAt || new Date();
   const localDate = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Ho_Chi_Minh", year: "numeric", month: "2-digit", day: "2-digit",
@@ -99,6 +101,7 @@ export const createTeacherSession = async (user, rawClassId, body = {}) => {
         sessionCode,
         attendanceDate,
         startsAt,
+        reminderAt,
         expiresAt,
         status: startMode === "SCHEDULED" ? "SCHEDULED" : "DRAFT",
         config: {

@@ -9,5 +9,6 @@ export const NOTIFICATION_CATEGORIES = Object.freeze({
   MESSAGE: "Message",
   POST: "Post",
   ASSIGNMENT: "Assignment",
+  ATTENDANCE: "Attendance",
 });
 

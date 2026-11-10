@@ -8,21 +8,37 @@ import {
 
 export const getStudentSessionDetail = async (studentId, rawSessionId) => {
   const sessionId = parseId(rawSessionId, "sessionId");
-  const participant = await prisma.attendanceSessionParticipant.findUnique({
-    where: { sessionId_studentId: { sessionId, studentId } },
-    include: { session: {
-      include: {
-        class: { select: { id: true, name: true, code: true } },
-        subject: { select: { id: true, title: true, subjectCode: true, location: true } },
-        teacher: { select: { id: true, name: true } },
-        config: true,
-        records: { where: { studentId }, take: 1 },
-      },
-    } },
+  const now = new Date();
+  const session = await prisma.attendanceSession.findUnique({
+    where: { id: sessionId },
+    include: {
+      class: { select: { id: true, name: true, code: true } },
+      subject: { select: { id: true, title: true, subjectCode: true, location: true } },
+      teacher: { select: { id: true, name: true } },
+      config: true,
+      records: { where: { studentId }, take: 1 },
+    },
   });
-  if (!participant || participant.status !== "ACTIVE") throw notFound("Không tìm thấy phiên điểm danh");
+  if (!session) throw notFound("Không tìm thấy phiên điểm danh");
 
-  const session = participant.session;
+  const [participant, classMember] = await Promise.all([
+    prisma.attendanceSessionParticipant.findUnique({
+      where: { sessionId_studentId: { sessionId, studentId } },
+      select: { status: true },
+    }),
+    prisma.classMember.findUnique({
+      where: { userId_classId: { userId: studentId, classId: session.classId } },
+      select: { status: true },
+    }),
+  ]);
+  const canView = participant?.status === "ACTIVE" || (
+    classMember?.status === "ACTIVE"
+    && ["DRAFT", "SCHEDULED"].includes(session.status)
+    && session.reminderAt > now
+    && session.reminderAt <= new Date(now.getTime() + 15 * 60_000)
+  );
+  if (!canView) throw notFound("Không tìm thấy phiên điểm danh");
+
   const record = session.records[0] || null;
   const faceProfile = await prisma.faceProfile.findUnique({
     where: { userId: studentId },
@@ -33,7 +49,6 @@ export const getStudentSessionDetail = async (studentId, rawSessionId) => {
       samples: { where: { isActive: true }, select: { sampleType: true } },
     },
   });
-  const now = new Date();
   const faceReady = faceProfile?.status === "ACTIVE"
     && !faceProfile.consentRevokedAt
     && (!faceProfile.retentionExpiresAt || faceProfile.retentionExpiresAt > now)

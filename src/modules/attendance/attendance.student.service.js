@@ -5,6 +5,8 @@ import {
 } from "./attendance.service.shared.js";
 
 export const getMyAttendanceSessions = async (studentId, query = {}) => {
+  const now = new Date();
+  const upcomingSessionWindowEnd = new Date(now.getTime() + 15 * 60_000);
   const classId = parseOptionalInt(query.classId, "classId");
   const from = parseDate(query.from, "from");
   const to = parseDate(query.to, "to", true);
@@ -18,9 +20,14 @@ export const getMyAttendanceSessions = async (studentId, query = {}) => {
   }
 
   const where = {
-    participants: {
-      some: { studentId },
-    },
+    OR: [
+      { participants: { some: { studentId } } },
+      {
+        status: { in: ["DRAFT", "SCHEDULED"] },
+        reminderAt: { gt: now, lte: upcomingSessionWindowEnd },
+        class: { is: { members: { some: { userId: studentId, status: "ACTIVE" } } } },
+      },
+    ],
   };
 
   if (classId !== undefined) where.classId = classId;

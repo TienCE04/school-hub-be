@@ -368,6 +368,9 @@ model AttendanceSession {
   sessionCode    String                         @unique
   attendanceDate DateTime                       @db.Date
   startsAt       DateTime?
+  reminderAt     DateTime?
+  reminderClaimedAt DateTime?
+  reminderSentAt DateTime?
   expiresAt      DateTime
   endedAt        DateTime?
   status         AttendanceSessionStatus        @default(DRAFT)
@@ -386,6 +389,7 @@ model AttendanceSession {
   @@index([classId, attendanceDate])
   @@index([teacherId, startsAt])
   @@index([status, expiresAt])
+  @@index([status, reminderAt])
 }
 
 model AttendanceSessionConfig {

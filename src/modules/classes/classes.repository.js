@@ -432,10 +432,62 @@ export const findStudentClassesBySemester = (userId, semesterId) => {
     prisma.semester.findUnique({ where: { id: semesterId }, select: { id: true, semesterName: true } }),
     prisma.classMember.findMany({
       where: { userId, status: "ACTIVE", class: { is: { semesterId } } },
-      select: { class: { select: { id: true, name: true, code: true, description: true } } },
+      select: {
+        class: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            description: true,
+            subject: {
+              select: {
+                title: true,
+                subjectCode: true,
+                session: true,
+                startTime: true,
+                endTime: true,
+                location: true,
+              },
+            },
+            members: {
+              where: { status: "ACTIVE", user: { is: { role: "TEACHER" } } },
+              select: { user: { select: { name: true } } },
+              orderBy: { joinedAt: "asc" },
+              take: 1,
+            },
+          },
+        },
+      },
       orderBy: { class: { name: "asc" } },
     }),
   ]);
+};
+
+export const findClassPostPage = async (classId, page, limit) => {
+  const skip = (page - 1) * limit;
+  const [posts, total] = await Promise.all([
+    prisma.post.findMany({
+      where: { classId },
+      skip,
+      take: limit,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        type: true,
+        createdAt: true,
+        updatedAt: true,
+        dueDate: true,
+        classId: true,
+        author: { select: publicUserSelect },
+        attachments: true,
+        _count: { select: { comments: true } },
+      },
+    }),
+    prisma.post.count({ where: { classId } }),
+  ]);
+  return { posts, total };
 };
 
 export const findClassByCode = (code) => {

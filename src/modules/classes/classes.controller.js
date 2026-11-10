@@ -11,6 +11,21 @@ export const getClassByCode = async (req, res) => {
   }
 };
 
+export const getClassPosts = async (req, res) => {
+  try {
+    const { classCode } = req.params;
+    const result = await service.getClassPostPage(
+      classCode,
+      req.user,
+      req.query.page,
+      req.query.limit,
+    );
+    res.json(result);
+  } catch (e) {
+    res.status(e.statusCode || 400).json({ message: e.message });
+  }
+};
+
 export const getPostById = async (req, res) => {
   try {
     const postId = parseInt(req.params.postId);

@@ -5,7 +5,11 @@ import prisma from './config/prisma.js';
 
 import { initSocket } from './realtime/gateway/index.js';
 import { initFirebase } from './config/firebase.js';
-import { finalizeExpiredAttendanceSessions, startDueAttendanceSessions } from './modules/attendance/attendance.service.js';
+import {
+  finalizeExpiredAttendanceSessions,
+  sendUpcomingAttendanceReminders,
+  startDueAttendanceSessions,
+} from './modules/attendance/attendance.service.js';
 import {
   purgeExpiredAttendanceFaceEvidence,
   purgeExpiredFaceProfiles,
@@ -53,6 +57,22 @@ async function startServer() {
     finalizeExpiredSessions();
     const attendanceExpiryTimer = setInterval(finalizeExpiredSessions, 30_000);
     attendanceExpiryTimer.unref();
+
+    let sendingAttendanceReminders = false;
+    const sendAttendanceReminders = async () => {
+      if (sendingAttendanceReminders) return;
+      sendingAttendanceReminders = true;
+      try {
+        await sendUpcomingAttendanceReminders();
+      } catch (error) {
+        console.error("Upcoming attendance reminders failed:", error);
+      } finally {
+        sendingAttendanceReminders = false;
+      }
+    };
+    sendAttendanceReminders();
+    const attendanceReminderTimer = setInterval(sendAttendanceReminders, 30_000);
+    attendanceReminderTimer.unref();
 
     const purgeExpiredFaceSamples = () => {
       purgeExpiredFaceProfiles().catch((error) => {

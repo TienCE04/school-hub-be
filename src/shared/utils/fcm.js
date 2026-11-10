@@ -63,6 +63,9 @@ const mapPayloadToAndroidData = async (payload) => {
       "postId",
       "classId",
       "classCode",
+      "sessionId",
+      "startsAt",
+      "reminderAt",
       "notificationKind",
       "grade",
     ]);
@@ -157,7 +160,8 @@ export const sendPushNotification = async (userId, payload) => {
  */
 export const sendPushNotificationToUsers = async (userIds, payload) => {
   const admin = getFirebaseAdmin();
-  if (!admin || !userIds || userIds.length === 0) return;
+  if (!admin) return false;
+  if (!userIds || userIds.length === 0) return true;
 
   try {
     const deviceTokens = await prisma.deviceToken.findMany({
@@ -165,38 +169,40 @@ export const sendPushNotificationToUsers = async (userIds, payload) => {
       select: { token: true }
     });
 
-    if (!deviceTokens || deviceTokens.length === 0) return;
+    if (!deviceTokens || deviceTokens.length === 0) return true;
 
     const tokens = deviceTokens.map(dt => dt.token);
 
     const fcmData = await mapPayloadToAndroidData(payload);
-
-    const message = {
-      data: fcmData,
-      tokens: tokens,
-    };
-
-    const response = await admin.messaging().sendEachForMulticast(message);
-
     const invalidTokens = [];
-    response.responses.forEach((resp, idx) => {
-      if (!resp.success) {
-        const errCode = resp.error?.code;
-        if (
-          errCode === 'messaging/invalid-registration-token' ||
-          errCode === 'messaging/registration-token-not-registered'
-        ) {
-          invalidTokens.push(tokens[idx]);
+    for (let offset = 0; offset < tokens.length; offset += 500) {
+      const tokenBatch = tokens.slice(offset, offset + 500);
+      const response = await admin.messaging().sendEachForMulticast({
+        data: fcmData,
+        tokens: tokenBatch,
+      });
+
+      response.responses.forEach((resp, idx) => {
+        if (!resp.success) {
+          const errCode = resp.error?.code;
+          if (
+            errCode === 'messaging/invalid-registration-token' ||
+            errCode === 'messaging/registration-token-not-registered'
+          ) {
+            invalidTokens.push(tokenBatch[idx]);
+          }
         }
-      }
-    });
+      });
+    }
 
     if (invalidTokens.length > 0) {
       await prisma.deviceToken.deleteMany({
         where: { token: { in: invalidTokens } }
       });
     }
+    return true;
   } catch (error) {
     console.error(`Failed to send multicast push notification:`, error);
+    return false;
   }
 };

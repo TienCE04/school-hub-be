@@ -15,6 +15,7 @@ router.post('/:id/members/manage', authenticate, authorize(['ADMIN']), controlle
 router.get('/by-semester/:semesterId', authenticate, authorize(['STUDENT']), controller.getStudentClassesBySemester);
 router.get('/', authenticate, controller.getMyClasses);
 router.post('/join', authenticate, controller.joinClass);
+router.get('/:classCode/posts', authenticate, controller.getClassPosts);
 router.get('/:classCode', authenticate, controller.getClassByCode);
 router.get('/:classCode/members/page', authenticate, controller.getClassRosterPage);
 router.get('/:classCode/members', authenticate, controller.getClassMembers);

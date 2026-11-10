@@ -60,6 +60,42 @@ export const getClassDetails = async (classCode, user) => {
   };
 };
 
+export const getClassPostPage = async (classCode, user, page = 1, limit = 20) => {
+  const classObj = await repo.findClassByCode(classCode);
+  if (!classObj) throw new Error("Class not found");
+  await assertClassMember(user, classObj.id);
+
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeLimit = Math.min(50, Math.max(1, Number(limit) || 20));
+  const result = await repo.findClassPostPage(classObj.id, safePage, safeLimit);
+  return {
+    posts: result.posts.map((post) => ({
+      id: post.id,
+      title: post.title,
+      content: post.content,
+      type: post.type,
+      createdAt: post.createdAt,
+      updatedAt: post.updatedAt,
+      dueDate: post.dueDate,
+      classId: post.classId,
+      author: {
+        id: post.author.id,
+        name: post.author.name,
+        avatar: post.author.avatar || "",
+        email: post.author.email,
+        role: post.author.role,
+      },
+      attachments: post.attachments,
+      comments: [],
+      commentCount: post._count.comments,
+    })),
+    page: safePage,
+    limit: safeLimit,
+    total: result.total,
+    totalPages: Math.ceil(result.total / safeLimit),
+  };
+};
+
 export const getPostById = async (postId, userId) => {
   const post = await repo.findPostById(postId);
   if (!post) throw new Error("Post not found");
@@ -491,7 +527,19 @@ export const getStudentClassesBySemester = async (userId, semesterId) => {
       id: semester.id,
       semesterName: semester.semesterName,
     },
-    classes: memberships.map((member) => member.class),
+    classes: memberships.map(({ class: classObj }) => ({
+      id: classObj.id,
+      name: classObj.name,
+      description: classObj.description,
+      code: classObj.code,
+      subjectName: classObj.subject?.title || null,
+      subjectCode: classObj.subject?.subjectCode || null,
+      session: classObj.subject?.session || null,
+      startTime: classObj.subject?.startTime || null,
+      endTime: classObj.subject?.endTime || null,
+      location: classObj.subject?.location || null,
+      teacherName: classObj.members?.[0]?.user?.name || null,
+    })),
   };
 };
 
