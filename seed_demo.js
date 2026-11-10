@@ -219,30 +219,6 @@ async function main() {
         teacherEmail: "gv.anh@schoolhub.local",
         status: "ENDED",
       },
-      {
-        code: "DEMO-ATT-20261106-DB",
-        classCode: "DB-2611-B",
-        date: "2026-11-06",
-        start: "13:45",
-        teacherEmail: "gv.anh@schoolhub.local",
-        status: "SCHEDULED",
-      },
-      {
-        code: "DEMO-ATT-20261109-MOB",
-        classCode: "MOB-2611-C",
-        date: "2026-11-09",
-        start: "15:30",
-        teacherEmail: "gv.minh@schoolhub.local",
-        status: "SCHEDULED",
-      },
-      {
-        code: "DEMO-ATT-20261112-WEB",
-        classCode: "WEB-2611-A",
-        date: "2026-11-12",
-        start: "08:30",
-        teacherEmail: "gv.anh@schoolhub.local",
-        status: "SCHEDULED",
-      },
     ];
 
     let completedSession;
@@ -437,8 +413,8 @@ async function main() {
       summary.users !== 7 || summary.teachers !== 2 || summary.students !== 5 ||
       summary.admins !== 0 || summary.semesters !== 1 || summary.classes !== 3 ||
       summary.subjects !== 3 || summary.attendanceDevices !== 2 ||
-      summary.attendanceSessions !== 4 || summary.completedSessions !== 1 ||
-      summary.scheduledSessions !== 3 || summary.attendanceParticipants !== 5 ||
+      summary.attendanceSessions !== 1 || summary.completedSessions !== 1 ||
+      summary.scheduledSessions !== 0 || summary.attendanceParticipants !== 5 ||
       summary.attendanceRecords !== 5 || summary.attendanceAttempts !== 4 ||
       summary.bleEvidence !== 4 || summary.faceVerifications !== 4 ||
       summary.attendanceChallenges !== 8

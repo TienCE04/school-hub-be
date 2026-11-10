@@ -75,6 +75,19 @@ export const createTeacherSession = async (req, res) => {
   }
 };
 
+export const getTeacherUpcomingLessonOptions = async (req, res) => {
+  try {
+    const options = await service.getTeacherUpcomingLessonOptions(
+      req.user,
+      req.params.classId,
+      req.query.subjectId,
+    );
+    return res.status(200).json(options);
+  } catch (error) {
+    return sendError(res, error);
+  }
+};
+
 export const startTeacherSession = async (req, res) => {
   try {
     const result = await service.startTeacherSession(req.user, req.params.sessionId);

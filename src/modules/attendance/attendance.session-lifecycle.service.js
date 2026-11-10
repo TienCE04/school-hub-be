@@ -1,9 +1,11 @@
 import prisma from "../../config/prisma.js";
 import { notifyAttendanceRecordsChanged } from "./attendance.realtime.js";
 import { hashToken } from "../../shared/utils/hash.js";
+import { findSubjectLessonWindow } from "./attendance.session-timing.js";
+import { assertNoActiveAttendanceSession, lockAttendanceSessionScope } from "./attendance.active-session-guard.js";
 import {
   addAuditLog, assertSessionManager, BLE_TOKEN_ROTATE_SECONDS, conflict, createBleToken,
-  getBleTokenExpiry, notFound, parseRequiredId, toIso,
+  getBleTokenExpiry, notFound, parseAttendanceDate, parseRequiredId, toIso,
 } from "./attendance.service.shared.js";
 
 const issueBleToken = async (tx, session, now) => {
@@ -51,7 +53,18 @@ export const startTeacherSession = async (user, rawSessionId) => {
   const result = await prisma.$transaction(async (tx) => {
     const session = await tx.attendanceSession.findUnique({
       where: { id: sessionId },
-      include: { config: true, device: true, subject: { select: { endTime: true } } },
+      include: {
+        config: true,
+        device: true,
+        subject: {
+          select: {
+            startDate: true,
+            startTime: true,
+            endTime: true,
+            semester: { select: { startDate: true, endDate: true, weekRanges: true } },
+          },
+        },
+      },
     });
     if (!session) throw notFound("Không tìm thấy phiên điểm danh");
     await assertSessionManager(tx, user, session);
@@ -61,24 +74,55 @@ export const startTeacherSession = async (user, rawSessionId) => {
     if (session.status === "SCHEDULED" && !session.startsAt) {
       throw conflict("SESSION_START_TIME_MISSING", "Phiên đã lên lịch nhưng thiếu thời gian bắt đầu");
     }
+    await lockAttendanceSessionScope(tx, session.classId, session.teacherId);
+    await assertNoActiveAttendanceSession(tx, {
+      classId: session.classId,
+      teacherId: session.teacherId,
+      excludeSessionId: sessionId,
+      now,
+    });
     if (session.expiresAt <= now) {
       throw conflict("SESSION_EXPIRED", "Thời gian của phiên điểm danh đã kết thúc");
     }
     if (!session.device || session.device.ownerId !== session.teacherId || session.device.status !== "ACTIVE") {
       throw conflict("DEVICE_UNAVAILABLE", "Điện thoại phát BLE không còn hoạt động");
     }
+    if (!session.subject) {
+      throw conflict("SUBJECT_UNAVAILABLE", "Không tìm thấy thời khóa biểu của môn học");
+    }
+
+    const lessonWindow = findSubjectLessonWindow(session.subject, now);
+    if (!lessonWindow) {
+      throw conflict("SESSION_OUTSIDE_CLASS_TIME", "Chỉ có thể mở phiên trong giờ học đã lên lịch");
+    }
+    if (session.status === "SCHEDULED" || (session.status === "DRAFT" && session.startsAt)) {
+      const plannedWindow = findSubjectLessonWindow(session.subject, session.startsAt);
+      if (!plannedWindow || plannedWindow.startsAt.getTime() !== lessonWindow.startsAt.getTime()) {
+        throw conflict("SESSION_NOT_STARTABLE", "Phiên chỉ có thể bắt đầu trong buổi học đã chọn");
+      }
+    }
 
     const durationMinutes = session.config?.durationMinutes || 15;
     const expiresAt = new Date(now.getTime() + durationMinutes * 60_000);
-    if (!session.subject || expiresAt > session.subject.endTime) {
-      throw conflict("SESSION_DURATION_EXCEEDS_SUBJECT", "Không đủ thời gian cho phiên điểm danh trước khi môn học kết thúc");
+    if (expiresAt > lessonWindow.endsAt) {
+      throw conflict("SESSION_DURATION_EXCEEDS_SUBJECT", "Không đủ thời gian cho phiên điểm danh trước khi buổi học kết thúc");
     }
 
     const claimed = await tx.attendanceSession.updateMany({
       where: { id: sessionId, status: { in: ["DRAFT", "SCHEDULED"] } },
       // `startsAt` becomes the actual opening time. This also makes an early
       // start of a scheduled session immediately available for student check-in.
-      data: { status: "ACTIVE", startsAt: now, expiresAt },
+      data: {
+        status: "ACTIVE",
+        startsAt: now,
+        expiresAt,
+        attendanceDate: parseAttendanceDate(new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Ho_Chi_Minh",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(session.status === "DRAFT" && session.startsAt ? session.startsAt : now)),
+      },
     });
     if (claimed.count !== 1) {
       throw conflict("SESSION_NOT_STARTABLE", "Phiên điểm danh đã được xử lý ở nơi khác");

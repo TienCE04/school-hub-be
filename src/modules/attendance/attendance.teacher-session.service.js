@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import prisma from "../../config/prisma.js";
-import { resolveSessionTiming } from "./attendance.session-timing.js";
+import { getSubjectLessonWindows, resolveSessionTiming } from "./attendance.session-timing.js";
+import { assertNoActiveAttendanceSession, lockAttendanceSessionScope } from "./attendance.active-session-guard.js";
 import {
   addAuditLog, assertClassManager, badRequest, notFound, parseAttendanceDate,
   parseDate, parseOptionalInt, parseRequiredId, toTeacherSessionDto, getTeacherSessionDisplayStatus,
@@ -59,7 +60,14 @@ export const createTeacherSession = async (user, rawClassId, body = {}) => {
 
   const subject = await prisma.subject.findUnique({
     where: requestedSubjectId === undefined ? { classId } : { id: requestedSubjectId },
-    select: { id: true, classId: true, startTime: true, endTime: true },
+    select: {
+      id: true,
+      classId: true,
+      startDate: true,
+      startTime: true,
+      endTime: true,
+      semester: { select: { startDate: true, endDate: true, weekRanges: true } },
+    },
   });
   if (!subject || subject.classId !== classId) {
     throw badRequest("subjectId must belong to the selected class and have a scheduled class time");
@@ -79,6 +87,9 @@ export const createTeacherSession = async (user, rawClassId, body = {}) => {
 
   const sessionCode = crypto.randomBytes(8).toString("hex").toUpperCase();
   const created = await prisma.$transaction(async (tx) => {
+    await lockAttendanceSessionScope(tx, classId, user.id);
+    await assertNoActiveAttendanceSession(tx, { classId, teacherId: user.id });
+
     const session = await tx.attendanceSession.create({
       data: {
         classId,
@@ -128,6 +139,36 @@ export const createTeacherSession = async (user, rawClassId, body = {}) => {
 
   return toTeacherSessionDto(created);
 };
+
+export const getTeacherUpcomingLessonOptions = async (user, rawClassId, rawSubjectId) => {
+  const classId = parseRequiredId(rawClassId, "classId");
+  const subjectId = parseRequiredId(rawSubjectId, "subjectId");
+  const classRow = await prisma.class.findUnique({ where: { id: classId }, select: { id: true } });
+  if (!classRow) throw notFound("Không tìm thấy lớp học");
+  await assertClassManager(prisma, user, classId);
+
+  const subject = await prisma.subject.findUnique({
+    where: { id: subjectId },
+    select: {
+      id: true,
+      classId: true,
+      startDate: true,
+      startTime: true,
+      endTime: true,
+      semester: { select: { startDate: true, endDate: true, weekRanges: true } },
+    },
+  });
+  if (!subject || subject.classId !== classId) {
+    throw badRequest("subjectId must belong to the selected class and have a scheduled class time");
+  }
+
+  const now = new Date();
+  return getSubjectLessonWindows(subject)
+    .filter((window) => window.endsAt > now)
+    .slice(0, 3)
+    .map((window) => ({ startsAt: window.startsAt.toISOString(), endsAt: window.endsAt.toISOString() }));
+};
+
 export const getTeacherClassSessions = async (user, rawClassId, query = {}) => {
   const classId = parseRequiredId(rawClassId, "classId");
   const from = parseDate(query.from, "from");

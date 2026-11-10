@@ -20,6 +20,7 @@ router.post("/devices/register", authenticate, authorize(["TEACHER"]), controlle
 router.get("/my/devices", authenticate, authorize(["TEACHER"]), controller.getMyTeacherDevices);
 router.delete("/devices/:deviceId", authenticate, authorize(["TEACHER", "ADMIN"]), controller.revokeTeacherDevice);
 
+router.get("/classes/:classId/lesson-options", authenticate, authorize(["TEACHER"]), controller.getTeacherUpcomingLessonOptions);
 router.get("/classes/:classId/sessions", authenticate, authorize(["TEACHER", "ADMIN"]), controller.getTeacherClassSessions);
 router.get("/classes/:classId/students", authenticate, authorize(["TEACHER", "ADMIN"]), controller.getTeacherClassStudentStats);
 router.get("/classes/:classId/students/:studentId/records", authenticate, authorize(["TEACHER", "ADMIN"]), controller.getTeacherStudentRecords);
