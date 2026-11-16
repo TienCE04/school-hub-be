@@ -5,6 +5,7 @@ import { authorize } from "../../shared/middleware/role.middleware.js";
 
 const router = express.Router();
 
+router.get("/my/reminder-schedule", authenticate, authorize(["TEACHER", "STUDENT"]), controller.getReminderSchedule);
 router.get("/my/sessions", authenticate, authorize(["STUDENT"]), controller.getMySessions);
 router.get("/my/sessions/:sessionId", authenticate, authorize(["STUDENT"]), controller.getMySessionDetail);
 router.get("/my/face-profile", authenticate, authorize(["STUDENT"]), controller.getMyFaceProfile);
@@ -12,6 +13,8 @@ router.post("/my/face-profile/consent", authenticate, authorize(["STUDENT"]), co
 router.post("/my/face-profile/enrollment", authenticate, authorize(["STUDENT"]), controller.enrollFaceProfile);
 router.delete("/my/face-profile/consent", authenticate, authorize(["STUDENT"]), controller.revokeFaceConsent);
 router.post("/sessions/:sessionId/attempts", authenticate, authorize(["STUDENT"]), controller.createStudentAttendanceAttempt);
+router.post("/sessions/:sessionId/my/relay-beacon", authenticate, authorize(["STUDENT"]), controller.createStudentRelayBeacon);
+router.delete("/sessions/:sessionId/my/relay-beacon", authenticate, authorize(["STUDENT"]), controller.revokeStudentRelayBeacons);
 router.delete("/attempts/:attemptId", authenticate, authorize(["STUDENT"]), controller.cancelStudentAttendanceAttempt);
 router.post("/attempts/:attemptId/ble-evidence", authenticate, authorize(["STUDENT"]), controller.submitBleEvidence);
 router.post("/attempts/:attemptId/evidence", authenticate, authorize(["STUDENT"]), controller.submitFaceEvidence);

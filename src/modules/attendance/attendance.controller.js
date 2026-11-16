@@ -1,6 +1,7 @@
 import * as service from "./attendance.service.js";
 import * as checkinService from "./attendance.checkin.service.js";
-import { notifyAttendanceRecordsChanged } from "./attendance.realtime.js";
+import { notifyAttendanceRecordsChanged, invalidateReminderSchedule } from "./attendance.realtime.js";
+import * as relayService from "./attendance.relay.service.js";
 
 const sendError = (res, error) => {
   const statusCode = error.statusCode || 500;
@@ -16,6 +17,30 @@ export const getMySessions = async (req, res) => {
   try {
     const sessions = await service.getMyAttendanceSessions(req.user.id, req.query);
     return res.status(200).json(sessions);
+  } catch (error) {
+    return sendError(res, error);
+  }
+};
+
+export const getReminderSchedule = async (req, res) => {
+  try {
+    return res.json(await service.getReminderSchedule(req.user));
+  } catch (error) {
+    return sendError(res, error);
+  }
+};
+
+export const createStudentRelayBeacon = async (req, res) => {
+  try {
+    return res.status(201).json(await relayService.createStudentRelayBeacon(req.user.id, req.params.sessionId));
+  } catch (error) {
+    return sendError(res, error);
+  }
+};
+
+export const revokeStudentRelayBeacons = async (req, res) => {
+  try {
+    return res.json(await relayService.revokeStudentRelayBeacons(req.user.id, req.params.sessionId));
   } catch (error) {
     return sendError(res, error);
   }
@@ -69,6 +94,7 @@ export const getTeacherClassSessions = async (req, res) => {
 export const createTeacherSession = async (req, res) => {
   try {
     const session = await service.createTeacherSession(req.user, req.params.classId, req.body);
+    if (session.status === "SCHEDULED") invalidateReminderSchedule(session.classId, req.user.id);
     return res.status(201).json(session);
   } catch (error) {
     return sendError(res, error);

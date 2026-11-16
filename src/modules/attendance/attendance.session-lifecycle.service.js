@@ -1,5 +1,5 @@
 import prisma from "../../config/prisma.js";
-import { notifyAttendanceRecordsChanged } from "./attendance.realtime.js";
+import { notifyAttendanceRecordsChanged, invalidateReminderSchedule } from "./attendance.realtime.js";
 import { hashToken } from "../../shared/utils/hash.js";
 import { findSubjectLessonWindow } from "./attendance.session-timing.js";
 import { assertNoActiveAttendanceSession, lockAttendanceSessionScope } from "./attendance.active-session-guard.js";
@@ -185,12 +185,16 @@ export const startTeacherSession = async (user, rawSessionId) => {
     return {
       sessionId,
       sessionCode: session.sessionCode,
-      expiresAt: session.expiresAt,
+      expiresAt,
       participantCount: roster.length,
       bleToken,
+      classId: session.classId,
+      teacherId: session.teacherId,
+      wasScheduled: session.status === "SCHEDULED",
     };
   });
 
+  if (result.wasScheduled) invalidateReminderSchedule(result.classId, result.teacherId);
   return {
     sessionId: result.sessionId,
     status: "ACTIVE",

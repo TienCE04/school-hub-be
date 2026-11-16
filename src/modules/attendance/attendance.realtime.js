@@ -3,6 +3,17 @@ import { getIO } from "../../realtime/gateway/index.js";
 import { SOCKET_EVENTS } from "../../realtime/events/index.js";
 import { createSocketPayload } from "../../realtime/events/payload.js";
 
+// Connected phones can refresh their schedule immediately; no reminder is sent.
+export function invalidateReminderSchedule(classId, teacherId) {
+  try {
+    const event = "attendance_schedule_changed";
+    getIO().to(`class:${classId}`).to(`user:${teacherId}`)
+      .emit(event, createSocketPayload("attendance_schedule", event, {}));
+  } catch (error) {
+    console.error("Could not emit attendance schedule change:", error.message);
+  }
+}
+
 // Send an invalidation only after the caller's transaction has committed.
 export const notifyAttendanceRecordsChanged = async ({ sessionId, recordId, attemptId }) => {
   try {

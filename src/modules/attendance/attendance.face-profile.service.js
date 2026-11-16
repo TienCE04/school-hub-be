@@ -16,7 +16,19 @@ export const getStudentSessionDetail = async (studentId, rawSessionId) => {
       subject: { select: { id: true, title: true, subjectCode: true, location: true } },
       teacher: { select: { id: true, name: true } },
       config: true,
-      records: { where: { studentId }, take: 1 },
+      records: {
+        where: { studentId }, take: 1,
+        select: {
+          status: true, verificationStatus: true, checkedInAt: true, source: true,
+          reviewedAt: true, reviewNote: true,
+          _count: { select: { attempts: true } },
+          attempts: {
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: 5,
+            select: { status: true, createdAt: true, errorCode: true, errorMessage: true },
+          },
+        },
+      },
     },
   });
   if (!session) throw notFound("Không tìm thấy phiên điểm danh");
@@ -72,6 +84,16 @@ export const getStudentSessionDetail = async (studentId, rawSessionId) => {
     attendanceStatus: record?.status || "PENDING",
     verificationStatus: record?.verificationStatus || "NOT_STARTED",
     checkedInAt: toIso(record?.checkedInAt),
+    source: record?.source ?? null,
+    reviewedAt: toIso(record?.reviewedAt),
+    reviewNote: record?.reviewNote ?? null,
+    attemptCount: record?._count.attempts ?? 0,
+    recentAttempts: (record?.attempts ?? []).map((attempt) => ({
+      status: attempt.status,
+      createdAt: toIso(attempt.createdAt),
+      reasonCode: attempt.errorCode,
+      message: attempt.errorMessage,
+    })),
     checkInAvailable: session.status === "ACTIVE"
       && session.startsAt <= now
       && session.expiresAt > now

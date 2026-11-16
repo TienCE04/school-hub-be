@@ -117,8 +117,10 @@ export const submitBleEvidence = async (studentId, rawAttemptId, body = {}) => {
       failure = { code: "BLE_SIGNAL_TOO_WEAK", message: "Tín hiệu BLE quá yếu" };
     }
 
+    let tokenChallenge = null;
+    let relaySourceStudentId = null;
     if (!failure) {
-      const tokenChallenge = await tx.attendanceSessionChallenge.findFirst({
+      tokenChallenge = await tx.attendanceSessionChallenge.findFirst({
         where: {
           sessionId: session.id,
           type: "BLE_TOKEN",
@@ -129,6 +131,35 @@ export const submitBleEvidence = async (studentId, rawAttemptId, body = {}) => {
         },
       });
       if (!tokenChallenge) failure = { code: "BLE_TOKEN_INVALID", message: "Token BLE không hợp lệ hoặc đã hết hạn" };
+    }
+
+    if (!failure && tokenChallenge?.attemptId) {
+      const relayAttempt = await tx.attendanceAttempt.findUnique({
+        where: { id: tokenChallenge.attemptId },
+        select: {
+          status: true,
+          record: { select: { sessionId: true, studentId: true, status: true, source: true } },
+          bleEvidence: { select: { status: true } },
+          faceVerification: { select: { status: true } },
+        },
+      });
+      const relayParticipant = relayAttempt
+        ? await tx.attendanceSessionParticipant.findUnique({
+          where: { sessionId_studentId: { sessionId: session.id, studentId: relayAttempt.record.studentId } },
+          select: { status: true },
+        })
+        : null;
+      if (!relayAttempt || relayAttempt.record.sessionId !== session.id
+          || relayAttempt.status !== "VERIFIED"
+          || !["PRESENT", "LATE"].includes(relayAttempt.record.status)
+          || relayAttempt.record.source !== "ONLINE"
+          || relayAttempt.bleEvidence?.status !== "VERIFIED"
+          || relayAttempt.faceVerification?.status !== "VERIFIED"
+          || relayParticipant?.status !== "ACTIVE") {
+        failure = { code: "BLE_RELAY_NOT_AUTHORIZED", message: "Sinh viên phát beacon chưa được xác minh điểm danh" };
+      } else {
+        relaySourceStudentId = relayAttempt.record.studentId;
+      }
     }
 
     const attemptStartedAt = attempt.initiatedAt || attempt.createdAt;
@@ -145,7 +176,9 @@ export const submitBleEvidence = async (studentId, rawAttemptId, body = {}) => {
       await tx.attendanceBleEvidence.create({
         data: {
           attemptId,
-          advertisedDeviceKey: session.device?.deviceKey || null,
+          advertisedDeviceKey: relaySourceStudentId
+            ? `student-relay:${relaySourceStudentId}`
+            : session.device?.deviceKey || null,
           advertisedSessionCode,
           tokenFingerprint: hashToken(token),
           rssiMin,
@@ -166,7 +199,9 @@ export const submitBleEvidence = async (studentId, rawAttemptId, body = {}) => {
     await tx.attendanceBleEvidence.create({
       data: {
         attemptId,
-        advertisedDeviceKey: session.device.deviceKey,
+        advertisedDeviceKey: relaySourceStudentId
+          ? `student-relay:${relaySourceStudentId}`
+          : session.device.deviceKey,
         advertisedSessionCode,
         tokenFingerprint: hashToken(token),
         rssiMin,
