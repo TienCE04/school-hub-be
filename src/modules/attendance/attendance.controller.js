@@ -143,6 +143,15 @@ export const endTeacherSession = async (req, res) => {
   }
 };
 
+export const deleteTeacherSession = async (req, res) => {
+  try {
+    const result = await service.deleteTeacherSession(req.user, req.params.sessionId);
+    return res.status(200).json(result);
+  } catch (error) {
+    return sendError(res, error);
+  }
+};
+
 export const getMySessionDetail = async (req, res) => {
   try {
     const detail = await checkinService.getStudentSessionDetail(req.user.id, req.params.sessionId);

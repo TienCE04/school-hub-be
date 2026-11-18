@@ -10,6 +10,7 @@ export {
 } from "./attendance.device.service.js";
 export {
   createTeacherSession,
+  deleteTeacherSession,
   getTeacherClassSessions,
   getTeacherUpcomingLessonOptions,
 } from "./attendance.teacher-session.service.js";

@@ -35,5 +35,6 @@ router.patch("/records/:recordId/manual-check-in", authenticate, authorize(["TEA
 router.post("/sessions/:sessionId/start", authenticate, authorize(["TEACHER", "ADMIN"]), controller.startTeacherSession);
 router.post("/sessions/:sessionId/ble-token", authenticate, authorize(["TEACHER", "ADMIN"]), controller.rotateTeacherSessionBleToken);
 router.post("/sessions/:sessionId/end", authenticate, authorize(["TEACHER", "ADMIN"]), controller.endTeacherSession);
+router.delete("/sessions/:sessionId", authenticate, authorize(["TEACHER", "ADMIN"]), controller.deleteTeacherSession);
 
 export default router;

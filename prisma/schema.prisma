@@ -739,6 +739,7 @@ enum AttendanceSessionChallengeType {
 
 enum AttendanceAuditAction {
   CREATE_SESSION
+  DELETE_SESSION
   START_SESSION
   STOP_SESSION
   FINALIZE_SESSION

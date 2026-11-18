@@ -1,9 +1,10 @@
 import crypto from "node:crypto";
 import prisma from "../../config/prisma.js";
+import { invalidateReminderSchedule } from "./attendance.realtime.js";
 import { getSubjectLessonWindows, resolveSessionTiming } from "./attendance.session-timing.js";
 import { assertNoActiveAttendanceSession, lockAttendanceSessionScope } from "./attendance.active-session-guard.js";
 import {
-  addAuditLog, assertClassManager, badRequest, notFound, parseAttendanceDate,
+  addAuditLog, assertClassManager, assertSessionManager, badRequest, conflict, notFound, parseAttendanceDate,
   parseDate, parseOptionalInt, parseRequiredId, toTeacherSessionDto, getTeacherSessionDisplayStatus,
 } from "./attendance.service.shared.js";
 
@@ -208,4 +209,55 @@ export const getTeacherClassSessions = async (user, rawClassId, query = {}) => {
     status: getTeacherSessionDisplayStatus(session, now),
     countCheckIn: countBySession.get(session.id) || 0,
   }));
+};
+
+export const deleteTeacherSession = async (user, rawSessionId) => {
+  const sessionId = parseRequiredId(rawSessionId, "sessionId");
+  const result = await prisma.$transaction(async (tx) => {
+    const initialSession = await tx.attendanceSession.findUnique({
+      where: { id: sessionId },
+      select: { id: true, classId: true, teacherId: true },
+    });
+    if (!initialSession) throw notFound("Không tìm thấy phiên điểm danh");
+
+    // Use the same scope lock as session start so a concurrent start and delete
+    // cannot both succeed based on the previous session status.
+    await lockAttendanceSessionScope(tx, initialSession.classId, initialSession.teacherId);
+
+    const session = await tx.attendanceSession.findUnique({
+      where: { id: sessionId },
+      include: { _count: { select: { participants: true, records: true } } },
+    });
+    if (!session) throw notFound("Không tìm thấy phiên điểm danh");
+    await assertSessionManager(tx, user, session);
+
+    if (!["DRAFT", "SCHEDULED"].includes(session.status)) {
+      throw conflict("SESSION_NOT_DELETABLE", "Chỉ có thể xoá phiên điểm danh chưa bắt đầu");
+    }
+    if (session.status === "SCHEDULED" && session.startsAt && session.startsAt <= new Date()) {
+      throw conflict("SESSION_NOT_DELETABLE", "Không thể xoá phiên đã đến giờ bắt đầu");
+    }
+    if (session._count.participants > 0 || session._count.records > 0) {
+      throw conflict("SESSION_HAS_ATTENDANCE_DATA", "Không thể xoá phiên đã có dữ liệu điểm danh");
+    }
+
+    await addAuditLog(tx, {
+      actorId: user.id,
+      sessionId,
+      action: "DELETE_SESSION",
+      entityType: "AttendanceSession",
+      entityId: sessionId,
+      metadata: { classId: session.classId, previousStatus: session.status },
+    });
+    await tx.attendanceSession.delete({ where: { id: sessionId } });
+    return {
+      sessionId,
+      classId: session.classId,
+      teacherId: session.teacherId,
+      wasScheduled: session.status === "SCHEDULED",
+    };
+  });
+
+  if (result.wasScheduled) invalidateReminderSchedule(result.classId, result.teacherId);
+  return { sessionId: result.sessionId, deleted: true };
 };

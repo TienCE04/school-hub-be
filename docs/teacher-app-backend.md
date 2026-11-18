@@ -106,6 +106,7 @@ App có thể tạo post type ASSIGNMENT qua RemoteDataRepositoryImpl.createPost
 | **POST /api/attendance/sessions/:sessionId/start** | TEACHER/ADMIN | Mở phiên, tạo participant/record và cấp BLE token. |
 | **POST /api/attendance/sessions/:sessionId/ble-token** | TEACHER/ADMIN | Cấp token BLE mới cho phiên đang ACTIVE. |
 | **POST /api/attendance/sessions/:sessionId/end** | TEACHER/ADMIN | Kết thúc phiên và chốt các bản ghi còn pending. |
+| **DELETE /api/attendance/sessions/:sessionId** | TEACHER/ADMIN | Xoá phiên DRAFT/SCHEDULED chưa bắt đầu và chưa có dữ liệu điểm danh. |
 | **PATCH /api/attendance/records/:recordId/review** | TEACHER/ADMIN | Xử lý bản ghi cần review. Body: decision (MARK_PRESENT/MARK_ABSENT) và note. |
 | **PATCH /api/attendance/records/:recordId/manual-check-in** | TEACHER/ADMIN | Đánh dấu có mặt thủ công; app hiện gửi body rỗng, backend dùng note mặc định. |
 | **GET /api/attendance/classes/:classId/students** | TEACHER/ADMIN | Thống kê chuyên cần theo sinh viên. |
@@ -803,6 +804,19 @@ Không có body. Response:
     }
 
 absentCount là số record PENDING được chuyển sang ABSENT trong transaction.
+
+#### DELETE /api/attendance/sessions/:sessionId
+
+Không có body. Chỉ giảng viên sở hữu phiên (hoặc ADMIN) được xoá. Backend chỉ nhận phiên DRAFT/SCHEDULED chưa tới giờ bắt đầu và chưa có participant/record; thao tác xoá đồng thời ghi audit log và hủy lịch nhắc nếu phiên đã được lên lịch.
+
+Response:
+
+    {
+      "sessionId": 40,
+      "deleted": true
+    }
+
+Nếu phiên đã bắt đầu, đã tới giờ bắt đầu, hoặc đã có dữ liệu điểm danh, backend trả 409 với mã `SESSION_NOT_DELETABLE` hoặc `SESSION_HAS_ATTENDANCE_DATA`.
 
 #### Thống kê và lịch sử chuyên cần
 
